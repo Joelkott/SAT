@@ -6,20 +6,20 @@ WORKDIR /app
 # Install dependencies
 RUN apk add --no-cache git
 
-# Copy go mod files first (handle both root and backend directory contexts)
-COPY backend/go.mod ./
-COPY backend/go.sum* ./
+# Copy go mod files first
+COPY go.mod ./
+COPY go.sum* ./
 # Download dependencies (go.sum is optional, will be generated if missing)
 RUN go mod download
 
-# Copy all backend source code
-COPY backend/cmd/ ./cmd/
-COPY backend/internal/ ./internal/
-COPY backend/Makefile ./Makefile
+# Copy all source code
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+COPY Makefile ./Makefile
 
 # Copy migrations - create directory and copy SQL file directly
 RUN mkdir -p ./migrations
-COPY backend/migrations/001_create_songs_table.sql ./migrations/
+COPY migrations/001_create_songs_table.sql ./migrations/
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server/main.go
