@@ -48,3 +48,57 @@ Thumbs.db
 *.sql
 *.sql.gz
 *.backup
+backend/backups/
+**/backups/
+
+# Import/Export files
+*.csv
+!backend/scripts/*.csv  # Keep script CSVs if needed, but ignore error CSVs
+*_errors_*.csv
+*_import_errors_*.csv
+direct_import_errors_*.csv
+import_errors_*.csv
+
+# Logs (already covered, but being explicit)
+*.log
+import*.log
+*_fast.log
+
+# Test/Deployment scripts
+test_*.sh
+*test*.sh
+migrate_*.sh
+
+# Documentation/Guide files
+*_GUIDE.md
+*_SETUP.md
+*_CHECKLIST.md
+DEPLOYMENT*.md
+SETUP*.md
+GUIDE*.md
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Docker volumes and data
+docker-data/
+.docker/
+
+# Railway/Vercel local files
+.railway/
+.vercel/
+
+# Python cache (for import scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.Python
+
+# Database dumps and exports
+songs_export.sql
+*.dump
