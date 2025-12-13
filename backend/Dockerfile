@@ -12,8 +12,13 @@ COPY backend/go.sum* ./
 # Download dependencies (go.sum is optional, will be generated if missing)
 RUN go mod download
 
-# Copy source code
-COPY backend/ ./
+# Copy source code (excluding migrations for now)
+COPY backend/cmd ./cmd
+COPY backend/internal ./internal
+COPY backend/Makefile ./Makefile
+
+# Copy migrations explicitly
+COPY backend/migrations ./migrations
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server/main.go
@@ -28,6 +33,8 @@ RUN apk --no-cache add ca-certificates postgresql-client
 
 # Copy the binary from builder
 COPY --from=builder /app/server .
+
+# Copy migrations directory (will fail if it doesn't exist, but it should)
 COPY --from=builder /app/migrations ./migrations
 
 # Create backups directory
