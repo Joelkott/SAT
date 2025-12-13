@@ -18,7 +18,6 @@ go.work
 .env.*.local
 
 # Next.js
-frontend/.next/
 frontend/out/
 frontend/build/
 frontend/dist/
