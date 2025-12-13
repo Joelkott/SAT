@@ -17,9 +17,8 @@ COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY Makefile ./Makefile
 
-# Copy migrations - create directory and copy SQL file directly
-RUN mkdir -p ./migrations
-COPY migrations/001_create_songs_table.sql ./migrations/
+# Copy migrations directory
+COPY migrations/ ./migrations/
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server/main.go
