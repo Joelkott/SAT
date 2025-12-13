@@ -1,0 +1,31 @@
+# Dependencies
+vendor/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Backups (will be mounted as volume)
+backups/
+
+# Build artifacts
+bin/
+*.exe
+
+# Test files
+*_test.go
+
