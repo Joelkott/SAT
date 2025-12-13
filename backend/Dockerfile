@@ -6,18 +6,18 @@ WORKDIR /app
 # Install dependencies
 RUN apk add --no-cache git
 
-# Copy go mod files (handle both root and backend directory contexts)
+# Copy go mod files first (handle both root and backend directory contexts)
 COPY backend/go.mod ./
 COPY backend/go.sum* ./
 # Download dependencies (go.sum is optional, will be generated if missing)
 RUN go mod download
 
-# Copy source code (excluding migrations for now)
-COPY backend/cmd ./cmd
-COPY backend/internal ./internal
+# Copy all backend source code
+COPY backend/cmd/ ./cmd/
+COPY backend/internal/ ./internal/
 COPY backend/Makefile ./Makefile
 
-# Copy migrations explicitly
+# Copy migrations directory
 COPY backend/migrations ./migrations
 
 # Build the application
