@@ -17,8 +17,9 @@ COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY Makefile ./Makefile
 
-# Copy migrations directory
-COPY migrations/ ./migrations/
+# Note: Migrations are not copied here - they will be run manually via Railway database connection
+# This avoids build issues if migrations directory isn't in build context
+RUN mkdir -p ./migrations
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server/main.go
@@ -34,8 +35,8 @@ RUN apk --no-cache add ca-certificates postgresql-client
 # Copy the binary from builder
 COPY --from=builder /app/server .
 
-# Copy migrations directory (will fail if it doesn't exist, but it should)
-COPY --from=builder /app/migrations ./migrations
+# Create migrations directory (migrations run manually via Railway)
+RUN mkdir -p ./migrations
 
 # Create backups directory
 RUN mkdir -p /app/backups
