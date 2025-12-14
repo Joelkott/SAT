@@ -30,13 +30,14 @@ FROM alpine:latest
 WORKDIR /app
 
 # Install dependencies including Tailscale for ProPresenter connectivity
+# Install Tailscale directly via apk (works better in containers than the install script)
 RUN apk --no-cache add \
     ca-certificates \
     postgresql-client \
     curl \
     iptables \
     ip6tables \
-    && curl -fsSL https://tailscale.com/install.sh | sh
+    tailscale
 
 # Copy the binary from builder
 COPY --from=builder /app/server .
