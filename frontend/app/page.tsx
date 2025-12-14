@@ -27,6 +27,7 @@ export default function Home() {
   const [ppSyncEnabled, setPpSyncEnabled] = useState(true);
   const [ppPlaylistName, setPpPlaylistName] = useState('Live Queue');
   const [ppThemeName, setPpThemeName] = useState('');
+  const [ppNotification, setPpNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const displayChannelRef = useRef<BroadcastChannel | null>(null);
   const [leftWidth, setLeftWidth] = useState(0.6);
   const [isDragging, setIsDragging] = useState(false);
@@ -68,9 +69,30 @@ export default function Home() {
   const checkProPresenterStatus = async () => {
     try {
       const status = await propresenterApi.getStatus();
+      console.log('ProPresenter status response:', status);
       setPpStatus(status);
-    } catch {
-      setPpStatus({ enabled: false, connected: false, message: 'Failed to check status' });
+      // If status shows enabled but we got a response, it's at least enabled
+      if (!status.enabled && status.message) {
+        // Check if the message indicates it's actually enabled but just not connected
+        if (status.message.includes('not configured') || status.message.includes('not enabled')) {
+          setPpStatus({ enabled: false, connected: false, message: status.message });
+        } else {
+          // Likely enabled but connection issue
+          setPpStatus({ enabled: true, connected: false, message: status.message });
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to check ProPresenter status:', err);
+      // If it's a 503, it means not enabled
+      if (err?.response?.status === 503) {
+        setPpStatus({ enabled: false, connected: false, message: 'ProPresenter integration not enabled on backend' });
+      } else if (err?.response?.status === 404) {
+        // Backend endpoint doesn't exist
+        setPpStatus({ enabled: false, connected: false, message: 'Backend API endpoint not found' });
+      } else {
+        // Network error or other - assume enabled but not connected
+        setPpStatus({ enabled: true, connected: false, message: 'Failed to connect - check backend and Tailscale' });
+      }
     }
   };
 
@@ -231,11 +253,15 @@ export default function Home() {
         
         const result = await propresenterApi.sendToQueue(song.id, song.title, ppPlaylistName, ppThemeName || undefined, song.lyrics);
         console.log('✅ ProPresenter sync successful:', result);
+        // Show success notification
+        setPpNotification({ message: 'Pushed to ProPresenter', type: 'success' });
+        setTimeout(() => setPpNotification(null), 3000);
       } catch (err: any) {
         console.error('❌ Failed to sync with ProPresenter:', err);
-        // Show user-friendly error
+        // Show error notification
         const errorMessage = err?.response?.data?.message || err?.message || 'Unknown error';
-        alert(`ProPresenter sync failed: ${errorMessage}`);
+        setPpNotification({ message: `Sync failed: ${errorMessage}`, type: 'error' });
+        setTimeout(() => setPpNotification(null), 5000);
       } finally {
         setPpSyncing(false);
       }
@@ -754,6 +780,24 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* ProPresenter Notification - Bottom Right */}
+      {ppNotification && (
+        <div className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg border ${
+          ppNotification.type === 'success' 
+            ? 'bg-green-900/90 border-green-700 text-green-100' 
+            : 'bg-red-900/90 border-red-700 text-red-100'
+        } transition-all duration-300`}>
+          <div className="flex items-center gap-2">
+            {ppNotification.type === 'success' ? (
+              <span className="text-green-400">✓</span>
+            ) : (
+              <span className="text-red-400">✕</span>
+            )}
+            <span className="text-sm font-medium">{ppNotification.message}</span>
+          </div>
+        </div>
+      )}
     </>
   );
 }
