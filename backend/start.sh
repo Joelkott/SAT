@@ -1,45 +1,53 @@
 #!/bin/sh
-set -e
+# Don't use set -e - we want the backend to start even if Tailscale fails
+set +e
 
-echo "🚀 Starting Tailscale-enabled backend..."
+echo "🚀 Starting backend server..."
+
+# Initialize Tailscale ready flag
+TAILSCALE_READY=false
 
 # Start Tailscale daemon in background with userspace networking (for containers)
-echo "Starting Tailscale daemon..."
-tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
-TAILSCALED_PID=$!
-
-# Wait for tailscaled to be ready
-echo "Waiting for Tailscale daemon..."
-for i in $(seq 1 30); do
-    if tailscale status >/dev/null 2>&1; then
-        echo "✅ Tailscale daemon ready"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo "❌ Tailscale daemon failed to start"
-        exit 1
-    fi
-    sleep 1
-done
-
-# Authenticate with Tailscale if auth key provided
+# Only if TAILSCALE_AUTH_KEY is provided (optional feature)
 if [ ! -z "$TAILSCALE_AUTH_KEY" ]; then
+    echo "Starting Tailscale daemon..."
+    tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock 2>/dev/null &
+    TAILSCALED_PID=$!
+
+    # Wait for tailscaled to be ready (non-blocking - don't fail if it doesn't start)
+    echo "Waiting for Tailscale daemon..."
+    for i in $(seq 1 10); do
+        if tailscale status >/dev/null 2>&1; then
+            echo "✅ Tailscale daemon ready"
+            TAILSCALE_READY=true
+            break
+        fi
+        sleep 1
+    done
+    
+    if [ "$TAILSCALE_READY" = "false" ]; then
+        echo "⚠️  Tailscale daemon failed to start (non-critical, continuing without it)"
+    fi
+else
+    echo "ℹ️  Tailscale not configured (TAILSCALE_AUTH_KEY not set)"
+fi
+
+# Authenticate with Tailscale if auth key provided and daemon is ready
+if [ ! -z "$TAILSCALE_AUTH_KEY" ] && [ "$TAILSCALE_READY" = "true" ]; then
     echo "Authenticating with Tailscale..."
     tailscale up \
         --authkey="$TAILSCALE_AUTH_KEY" \
         --hostname=railway-teleprompter-backend \
         --accept-routes \
-        --accept-dns=false
+        --accept-dns=false 2>/dev/null
     
     if [ $? -eq 0 ]; then
         echo "✅ Tailscale connected"
-        tailscale status
     else
         echo "⚠️  Tailscale authentication failed, continuing anyway..."
     fi
-else
-    echo "⚠️  No TAILSCALE_AUTH_KEY provided, ProPresenter integration won't work"
-    echo "   Generate one at: https://login.tailscale.com/admin/settings/keys"
+elif [ ! -z "$TAILSCALE_AUTH_KEY" ]; then
+    echo "⚠️  Tailscale daemon not ready, ProPresenter integration won't work"
 fi
 
 # Check ProPresenter connectivity if enabled
