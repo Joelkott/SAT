@@ -21,15 +21,42 @@ export default function Home() {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [zoomLevel, setZoomLevel] = useState(1.0);
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
   const [ppStatus, setPpStatus] = useState<ProPresenterStatus | null>(null);
   const [ppSyncing, setPpSyncing] = useState(false);
   const [ppSyncEnabled, setPpSyncEnabled] = useState(true);
+  const [ppPlaylistName, setPpPlaylistName] = useState('Live Queue');
+  const [ppThemeName, setPpThemeName] = useState('');
   const displayChannelRef = useRef<BroadcastChannel | null>(null);
   const [leftWidth, setLeftWidth] = useState(0.6);
   const [isDragging, setIsDragging] = useState(false);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const leftWidthRef = useRef(0.6);
   const rafIdRef = useRef<number | null>(null);
+  
+  // Load alignment preference from localStorage
+  useEffect(() => {
+    const savedAlign = localStorage.getItem('lyrics-text-align');
+    if (savedAlign === 'left' || savedAlign === 'center' || savedAlign === 'right') {
+      setTextAlign(savedAlign);
+    }
+    
+    // Load ProPresenter preferences
+    const savedPlaylist = localStorage.getItem('pp-playlist-name');
+    if (savedPlaylist) {
+      setPpPlaylistName(savedPlaylist);
+    }
+    
+    const savedTheme = localStorage.getItem('pp-theme-name');
+    if (savedTheme) {
+      setPpThemeName(savedTheme);
+    }
+    
+    const savedSyncEnabled = localStorage.getItem('pp-sync-enabled');
+    if (savedSyncEnabled !== null) {
+      setPpSyncEnabled(savedSyncEnabled === 'true');
+    }
+  }, []);
 
   // Load all songs on mount
   useEffect(() => {
@@ -193,7 +220,7 @@ export default function Home() {
     if (ppSyncEnabled && ppStatus?.connected) {
       setPpSyncing(true);
       try {
-        await propresenterApi.sendToQueue(song.id, song.title);
+        await propresenterApi.sendToQueue(song.id, song.title, ppPlaylistName, ppThemeName || undefined);
       } catch (err) {
         console.error('Failed to sync with ProPresenter:', err);
       } finally {
@@ -493,7 +520,11 @@ export default function Home() {
                     </div>
                   </div>
                   <button
-                    onClick={() => setPpSyncEnabled(!ppSyncEnabled)}
+                    onClick={() => {
+                      const newState = !ppSyncEnabled;
+                      setPpSyncEnabled(newState);
+                      localStorage.setItem('pp-sync-enabled', String(newState));
+                    }}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                       ppSyncEnabled 
                         ? 'bg-green-600/20 text-green-400 border border-green-600/30 hover:bg-green-600/30' 
@@ -505,9 +536,43 @@ export default function Home() {
                     {ppSyncEnabled ? 'Sync On' : 'Sync Off'}
                   </button>
                 </div>
-                {ppStatus?.connected && liveSong && (
-                  <div className="text-xs text-gray-500 px-1">
-                    Songs sent to &quot;Live Queue&quot; playlist in ProPresenter
+                {ppStatus?.connected && (
+                  <div className="bg-[#141518] rounded-lg p-3 border border-[#2a2c31] space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-2">Playlist Name</label>
+                      <input
+                        type="text"
+                        value={ppPlaylistName}
+                        onChange={(e) => {
+                          setPpPlaylistName(e.target.value);
+                          localStorage.setItem('pp-playlist-name', e.target.value);
+                        }}
+                        className="w-full bg-[#1a1b1f] border border-[#2a2c31] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                        placeholder="Live Queue"
+                        disabled={!ppSyncEnabled}
+                      />
+                      <div className="text-xs text-gray-600 mt-1">
+                        Songs auto-added to this playlist
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-2">Theme Name (Optional)</label>
+                      <input
+                        type="text"
+                        value={ppThemeName}
+                        onChange={(e) => {
+                          setPpThemeName(e.target.value);
+                          localStorage.setItem('pp-theme-name', e.target.value);
+                        }}
+                        className="w-full bg-[#1a1b1f] border border-[#2a2c31] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                        placeholder="Leave empty for default"
+                        disabled={!ppSyncEnabled}
+                      />
+                      <div className="text-xs text-gray-600 mt-1">
+                        Theme applied to songs in ProPresenter
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -523,11 +588,69 @@ export default function Home() {
                   </div>
                   {selectedSong && (
                     <div className="flex items-center gap-2">
+                      {/* Text Alignment Controls */}
+                      <div className="flex items-center gap-1 bg-[#1a1b1f] px-2 py-1 rounded-md border border-[#2a2c31]">
+                        <button
+                          onClick={() => {
+                            setTextAlign('left');
+                            localStorage.setItem('lyrics-text-align', 'left');
+                            displayChannelRef.current?.postMessage({
+                              type: 'alignment',
+                              textAlign: 'left',
+                            });
+                          }}
+                          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
+                            textAlign === 'left' ? 'bg-blue-600 text-white border border-blue-500' : 'border border-[#3a3c42] bg-[#1a1b1f] text-white hover:border-gray-100 hover:bg-[#2a2c31]'
+                          }`}
+                          title="Align Left"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h14" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTextAlign('center');
+                            localStorage.setItem('lyrics-text-align', 'center');
+                            displayChannelRef.current?.postMessage({
+                              type: 'alignment',
+                              textAlign: 'center',
+                            });
+                          }}
+                          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
+                            textAlign === 'center' ? 'bg-blue-600 text-white border border-blue-500' : 'border border-[#3a3c42] bg-[#1a1b1f] text-white hover:border-gray-100 hover:bg-[#2a2c31]'
+                          }`}
+                          title="Align Center"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M7 12h10M5 18h14" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTextAlign('right');
+                            localStorage.setItem('lyrics-text-align', 'right');
+                            displayChannelRef.current?.postMessage({
+                              type: 'alignment',
+                              textAlign: 'right',
+                            });
+                          }}
+                          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
+                            textAlign === 'right' ? 'bg-blue-600 text-white border border-blue-500' : 'border border-[#3a3c42] bg-[#1a1b1f] text-white hover:border-gray-100 hover:bg-[#2a2c31]'
+                          }`}
+                          title="Align Right"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M10 12h10M6 18h14" />
+                          </svg>
+                        </button>
+                      </div>
+
                       {/* Zoom Controls */}
                       <div className="flex items-center gap-1.5 bg-[#1a1b1f] px-2 py-1 rounded-md border border-[#2a2c31]">
                         <button
                           onClick={() => {
-                            const newZoom = Math.max(0.5, zoomLevel - 0.1);
+                            const newZoom = Math.max(0.3, zoomLevel - 0.1);
                             setZoomLevel(newZoom);
                             displayChannelRef.current?.postMessage({
                               type: 'zoom',
@@ -544,7 +667,7 @@ export default function Home() {
                         </span>
                         <button
                           onClick={() => {
-                            const newZoom = Math.min(3.0, zoomLevel + 0.1);
+                            const newZoom = Math.min(10.0, zoomLevel + 0.1);
                             setZoomLevel(newZoom);
                             displayChannelRef.current?.postMessage({
                               type: 'zoom',
@@ -589,12 +712,12 @@ export default function Home() {
                         }
                       }}
                     >
-                      <div 
-                        className="w-full max-w-4xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl mx-auto"
-                        style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center' }}
-                      >
+                      <div className="w-full max-w-4xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl mx-auto">
                         <div className="flex items-center min-h-full py-8">
-                          <pre className="whitespace-pre-wrap text-center w-full text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl leading-relaxed text-white">
+                          <pre 
+                            className={`whitespace-pre-wrap text-${textAlign} w-full leading-relaxed text-white`}
+                            style={{ fontSize: `${0.875 * zoomLevel}rem` }}
+                          >
                             {selectedSong.lyrics}
                           </pre>
                         </div>

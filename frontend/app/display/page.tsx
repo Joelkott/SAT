@@ -9,8 +9,32 @@ type DisplaySong = Pick<Song, 'id' | 'title' | 'artist' | 'lyrics' | 'content' |
 export default function Display() {
   const [song, setSong] = useState<DisplaySong | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1.0);
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Load alignment preference from localStorage
+  useEffect(() => {
+    const savedAlign = localStorage.getItem('lyrics-text-align');
+    if (savedAlign === 'left' || savedAlign === 'center' || savedAlign === 'right') {
+      setTextAlign(savedAlign);
+    }
+  }, []);
+  
+  // Listen for alignment changes from main page
+  useEffect(() => {
+    const channel = new BroadcastChannel('lyrics-display');
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'alignment' && event.data.textAlign) {
+        setTextAlign(event.data.textAlign);
+      }
+    };
+    channel.addEventListener('message', handleMessage);
+    return () => {
+      channel.removeEventListener('message', handleMessage);
+      channel.close();
+    };
+  }, []);
 
   // Auto-hide controls after inactivity
   useEffect(() => {
@@ -60,11 +84,11 @@ export default function Display() {
       // Zoom controls
       if (e.key === '+' || e.key === '=') {
         e.preventDefault();
-        setZoomLevel(prev => Math.min(prev + 0.1, 2.0));
+        setZoomLevel(prev => Math.min(prev + 0.1, 10.0));
       }
       if (e.key === '-' || e.key === '_') {
         e.preventDefault();
-        setZoomLevel(prev => Math.max(prev - 0.1, 0.5));
+        setZoomLevel(prev => Math.max(prev - 0.1, 0.3));
       }
       if (e.key === '0') {
         e.preventDefault();
@@ -150,7 +174,7 @@ export default function Display() {
 
       {/* Main Content - Always use SplitLyricsView which supports 1+ panes */}
       {song ? (
-        <SplitLyricsView lyrics={song.lyrics} zoomLevel={zoomLevel} />
+        <SplitLyricsView lyrics={song.lyrics} zoomLevel={zoomLevel} textAlign={textAlign} />
       ) : (
         <div className="h-full w-full flex items-center justify-center">
           <div className="text-center">

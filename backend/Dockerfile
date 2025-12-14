@@ -29,21 +29,31 @@ FROM alpine:latest
 
 WORKDIR /app
 
-# Install ca-certificates for HTTPS requests and postgresql-client for backups
-RUN apk --no-cache add ca-certificates postgresql-client
+# Install dependencies including Tailscale for ProPresenter connectivity
+RUN apk --no-cache add \
+    ca-certificates \
+    postgresql-client \
+    curl \
+    iptables \
+    ip6tables \
+    && curl -fsSL https://tailscale.com/install.sh | sh
 
 # Copy the binary from builder
 COPY --from=builder /app/server .
 
-# Create migrations directory (migrations run manually via Railway)
-RUN mkdir -p ./migrations
+# Copy start script
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
-# Create backups directory
+# Create directories
+RUN mkdir -p ./migrations
 RUN mkdir -p /app/backups
+RUN mkdir -p /var/lib/tailscale
+RUN mkdir -p /var/run/tailscale
 
 # Expose port
 EXPOSE 8080
 
-# Run the application
-CMD ["./server"]
+# Run start script (starts Tailscale then server)
+CMD ["/app/start.sh"]
 

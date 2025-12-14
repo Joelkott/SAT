@@ -35,11 +35,12 @@ services:
       TYPESENSE_HOST: ${TYPESENSE_HOST}
       PORT: 8080
       BACKUP_DIR: /app/backups
-      # ProPresenter Integration
+      # ProPresenter Integration (requires Tailscale)
       PROPRESENTER_ENABLED: ${PROPRESENTER_ENABLED:-false}
       PROPRESENTER_HOST: ${PROPRESENTER_HOST:-}
       PROPRESENTER_PORT: ${PROPRESENTER_PORT:-62683}
       PROPRESENTER_PLAYLIST: ${PROPRESENTER_PLAYLIST:-Live Queue}
+      TAILSCALE_AUTH_KEY: ${TAILSCALE_AUTH_KEY:-}
     volumes:
       - backups_data:/app/backups
     ports:

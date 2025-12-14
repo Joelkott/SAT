@@ -1,7 +1,7 @@
 'use client';
 
 import { Song } from '@/lib/api';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 interface SongFullScreenProps {
   song: Song;
@@ -11,6 +11,15 @@ interface SongFullScreenProps {
 }
 
 export default function SongFullScreen({ song, onClose, onEdit, onDelete }: SongFullScreenProps) {
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
+  
+  // Load alignment preference from localStorage
+  useEffect(() => {
+    const savedAlign = localStorage.getItem('lyrics-text-align');
+    if (savedAlign === 'left' || savedAlign === 'center' || savedAlign === 'right') {
+      setTextAlign(savedAlign);
+    }
+  }, []);
   // Close on ESC key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -35,7 +44,53 @@ export default function SongFullScreen({ song, onClose, onEdit, onDelete }: Song
             {song.language}
           </span>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          {/* Alignment Controls */}
+          <div className="flex items-center gap-1 bg-gray-800/80 border border-gray-600 rounded-lg px-2 py-1 mr-2">
+            <button
+              onClick={() => {
+                setTextAlign('left');
+                localStorage.setItem('lyrics-text-align', 'left');
+              }}
+              className={`w-8 h-8 flex items-center justify-center rounded transition-colors ${
+                textAlign === 'left' ? 'bg-blue-600 text-white' : 'text-white hover:bg-gray-700'
+              }`}
+              title="Align Left"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h14" />
+              </svg>
+            </button>
+            <button
+              onClick={() => {
+                setTextAlign('center');
+                localStorage.setItem('lyrics-text-align', 'center');
+              }}
+              className={`w-8 h-8 flex items-center justify-center rounded transition-colors ${
+                textAlign === 'center' ? 'bg-blue-600 text-white' : 'text-white hover:bg-gray-700'
+              }`}
+              title="Align Center"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M7 12h10M5 18h14" />
+              </svg>
+            </button>
+            <button
+              onClick={() => {
+                setTextAlign('right');
+                localStorage.setItem('lyrics-text-align', 'right');
+              }}
+              className={`w-8 h-8 flex items-center justify-center rounded transition-colors ${
+                textAlign === 'right' ? 'bg-blue-600 text-white' : 'text-white hover:bg-gray-700'
+              }`}
+              title="Align Right"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M10 12h10M6 18h14" />
+              </svg>
+            </button>
+          </div>
+
           <button
             onClick={() => onEdit(song)}
             className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
@@ -67,7 +122,7 @@ export default function SongFullScreen({ song, onClose, onEdit, onDelete }: Song
         <div className="max-w-5xl mx-auto">
           {/* Lyrics */}
           <div className="mb-8">
-            <pre className="whitespace-pre-wrap font-sans text-2xl leading-relaxed text-white text-center">
+            <pre className={`whitespace-pre-wrap font-sans text-2xl leading-relaxed text-white text-${textAlign}`}>
               {song.lyrics}
             </pre>
           </div>

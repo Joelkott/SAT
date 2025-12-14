@@ -406,6 +406,7 @@ func (h *Handler) ProPresenterSendToQueue(c *fiber.Ctx) error {
 		SongID       string `json:"song_id"`
 		SongTitle    string `json:"song_title"`
 		PlaylistName string `json:"playlist_name"` // optional, defaults to "Live Queue"
+		ThemeName    string `json:"theme_name"`    // optional, theme to apply to the song
 	}
 
 	if err := c.BodyParser(&req); err != nil {
@@ -437,12 +438,19 @@ func (h *Handler) ProPresenterSendToQueue(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	// Apply theme if specified (ProPresenter API endpoint: PUT /v1/presentation/{uuid}/theme/{theme_uuid})
+	// Note: Theme application requires theme UUID lookup - to be implemented if needed
+	if req.ThemeName != "" {
+		log.Printf("Theme application requested: %s (feature pending ProPresenter theme API integration)", req.ThemeName)
+	}
+
 	return c.JSON(fiber.Map{
 		"success":      true,
 		"message":      "Song added to ProPresenter playlist",
 		"song_title":   songTitle,
 		"playlist":     playlistName,
 		"pp_item_uuid": uuid,
+		"theme_note":   "Theme application requires ProPresenter theme API integration",
 	})
 }
 

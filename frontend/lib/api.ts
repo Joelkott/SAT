@@ -158,11 +158,12 @@ export const propresenterApi = {
   },
 
   // Send a song to the ProPresenter queue/playlist
-  sendToQueue: async (songId: string, songTitle: string, playlistName?: string): Promise<ProPresenterQueueResult> => {
+  sendToQueue: async (songId: string, songTitle: string, playlistName?: string, themeName?: string): Promise<ProPresenterQueueResult> => {
     const response = await api.post<ProPresenterQueueResult>('/propresenter/queue', {
       song_id: songId,
       song_title: songTitle,
       playlist_name: playlistName,
+      theme_name: themeName,
     });
     return response.data;
   },

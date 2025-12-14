@@ -5,6 +5,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 interface SplitLyricsViewProps {
   lyrics: string;
   zoomLevel: number;
+  textAlign?: 'left' | 'center' | 'right';
 }
 
 interface Pane {
@@ -14,7 +15,7 @@ interface Pane {
 
 const MIN_PANE_HEIGHT = 5; // Minimum 5% height per pane
 
-export default function SplitLyricsView({ lyrics, zoomLevel }: SplitLyricsViewProps) {
+export default function SplitLyricsView({ lyrics, zoomLevel, textAlign = 'center' }: SplitLyricsViewProps) {
   const [panes, setPanes] = useState<Pane[]>([
     { id: '1', heightPercent: 100 },
   ]);
@@ -137,16 +138,26 @@ export default function SplitLyricsView({ lyrics, zoomLevel }: SplitLyricsViewPr
     }
   }, [draggingIndex, handleTouchMove, handleMouseUp]);
 
-  const renderLyrics = () => (
-    <div 
-      className="w-full max-w-4xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl mx-auto"
-      style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center' }}
-    >
-      <pre className="whitespace-pre-wrap text-center w-full text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl leading-relaxed text-white">
-        {lyrics}
-      </pre>
-    </div>
-  );
+  const renderLyrics = () => {
+    const alignClass = textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center';
+    
+    // Calculate font size based on zoom level
+    // Base sizes: 1.125rem (lg), 1.25rem (xl), 1.5rem (2xl), 1.875rem (3xl), 2.25rem (4xl), 3rem (5xl)
+    // Using rem so text reflows properly instead of scaling
+    const baseFontSize = 1.5; // Base: 1.5rem (24px) for medium screens
+    const fontSize = `${baseFontSize * zoomLevel}rem`;
+    
+    return (
+      <div className="w-full max-w-4xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl mx-auto">
+        <pre 
+          className={`whitespace-pre-wrap ${alignClass} w-full leading-relaxed text-white`}
+          style={{ fontSize }}
+        >
+          {lyrics}
+        </pre>
+      </div>
+    );
+  };
 
   return (
     <div ref={containerRef} className="h-full w-full flex flex-col relative">
