@@ -50,14 +50,15 @@ elif [ ! -z "$TAILSCALE_AUTH_KEY" ]; then
     echo "⚠️  Tailscale daemon not ready, ProPresenter integration won't work"
 fi
 
-# Check ProPresenter connectivity if enabled
+# Check ProPresenter connectivity if enabled (non-blocking)
 if [ "$PROPRESENTER_ENABLED" = "true" ] && [ ! -z "$PROPRESENTER_HOST" ]; then
     echo "Testing ProPresenter connection at $PROPRESENTER_HOST:$PROPRESENTER_PORT..."
-    if nc -z -w5 "$PROPRESENTER_HOST" "$PROPRESENTER_PORT" 2>/dev/null; then
+    if nc -z -w3 "$PROPRESENTER_HOST" "$PROPRESENTER_PORT" 2>/dev/null; then
         echo "✅ ProPresenter is reachable"
     else
         echo "⚠️  Cannot reach ProPresenter at $PROPRESENTER_HOST:$PROPRESENTER_PORT"
         echo "   Make sure Tailscale is running on both machines"
+        echo "   Backend will continue - ProPresenter sync will be attempted on-demand"
     fi
 fi
 

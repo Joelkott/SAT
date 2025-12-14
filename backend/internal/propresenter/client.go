@@ -109,7 +109,14 @@ func New(config *Config) *Client {
 	return &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 5 * time.Second, // Shorter timeout for production
+			Transport: &http.Transport{
+				MaxIdleConns:        10,
+				MaxIdleConnsPerHost:  5,
+				IdleConnTimeout:      30 * time.Second,
+				DisableKeepAlives:    false,
+				ResponseHeaderTimeout: 3 * time.Second,
+			},
 		},
 		enabled: true,
 	}
@@ -376,6 +383,7 @@ func (c *Client) ClearLayer(layer string) error {
 
 // SendToLiveQueue finds a song by title and adds it to the "Live Queue" playlist
 // Returns the library item UUID if found
+// Includes retry logic for production resilience
 func (c *Client) SendToLiveQueue(songTitle string, playlistName string) (string, error) {
 	if !c.enabled {
 		return "", fmt.Errorf("ProPresenter integration is not enabled")
@@ -385,43 +393,84 @@ func (c *Client) SendToLiveQueue(songTitle string, playlistName string) (string,
 		playlistName = "Live Queue"
 	}
 
-	// Find the song in library
-	item, err := c.FindSongByTitle(songTitle)
+	var item *LibraryItem
+	var playlist *Playlist
+	var err error
+
+	// Retry finding the song (up to 2 retries)
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(300 * time.Millisecond)
+		}
+		item, err = c.FindSongByTitle(songTitle)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return "", fmt.Errorf("song not found in ProPresenter library: %w", err)
 	}
 
-	// Find or create the playlist
-	playlist, err := c.FindOrCreatePlaylist(playlistName)
+	// Retry finding/creating playlist
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(300 * time.Millisecond)
+		}
+		playlist, err = c.FindOrCreatePlaylist(playlistName)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to get/create playlist: %w", err)
 	}
 
-	// Add to playlist
-	if err := c.AddToPlaylist(playlist.ID.UUID, item.ID.UUID); err != nil {
-		return "", fmt.Errorf("failed to add to playlist: %w", err)
+	// Retry adding to playlist
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(300 * time.Millisecond)
+		}
+		err = c.AddToPlaylist(playlist.ID.UUID, item.ID.UUID)
+		if err == nil {
+			return item.ID.UUID, nil
+		}
 	}
 
-	return item.ID.UUID, nil
+	return "", fmt.Errorf("failed to add to playlist after retries: %w", err)
 }
 
-// Health checks if ProPresenter is reachable
+// Health checks if ProPresenter is reachable with retry logic
 func (c *Client) Health() error {
 	if !c.enabled {
 		return fmt.Errorf("ProPresenter integration is not enabled")
 	}
 
-	resp, err := c.httpClient.Get(c.baseURL + "/v1/status")
-	if err != nil {
-		return fmt.Errorf("ProPresenter not reachable: %w", err)
-	}
-	defer resp.Body.Close()
+	// Retry up to 2 times for production resilience
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(500 * time.Millisecond) // Brief delay between retries
+		}
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("ProPresenter returned status %d", resp.StatusCode)
+		resp, err := c.httpClient.Get(c.baseURL + "/v1/status")
+		if err != nil {
+			lastErr = fmt.Errorf("ProPresenter not reachable: %w", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			return nil // Success
+		}
+
+		lastErr = fmt.Errorf("ProPresenter returned status %d", resp.StatusCode)
+		if resp.StatusCode < 500 {
+			// Client errors (4xx) don't benefit from retries
+			break
+		}
 	}
 
-	return nil
+	return lastErr
 }
 
 

@@ -435,7 +435,14 @@ func (h *Handler) ProPresenterSendToQueue(c *fiber.Ctx) error {
 	uuid, err := h.propresenter.SendToLiveQueue(songTitle, playlistName)
 	if err != nil {
 		log.Printf("Error sending to ProPresenter queue: %v", err)
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		// Don't fail the request completely - return partial success
+		// The song is still in the database, just ProPresenter sync failed
+		return c.Status(503).JSON(fiber.Map{
+			"error":      "Failed to sync with ProPresenter",
+			"message":    err.Error(),
+			"song_title": songTitle,
+			"playlist":   playlistName,
+		})
 	}
 
 	// Apply theme if specified (ProPresenter API endpoint: PUT /v1/presentation/{uuid}/theme/{theme_uuid})

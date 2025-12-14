@@ -1,0 +1,113 @@
+[1mdiff --git a/backend/Dockerfile b/backend/Dockerfile[m
+[1mindex 3bd54fe..d75142a 100644[m
+[1m--- a/backend/Dockerfile[m
+[1m+++ b/backend/Dockerfile[m
+[36m@@ -1,49 +1,60 @@[m
+[31m-# Build stage[m
+[31m-FROM golang:1.21-alpine AS builder[m
+[31m-[m
+[31m-WORKDIR /app[m
+[31m-[m
+[31m-# Install dependencies[m
+[31m-RUN apk add --no-cache git[m
+[31m-[m
+[31m-# Copy go mod files first[m
+[31m-COPY go.mod ./[m
+[31m-COPY go.sum* ./[m
+[31m-# Download dependencies (go.sum is optional, will be generated if missing)[m
+[31m-RUN go mod download[m
+[31m-[m
+[31m-# Copy all source code[m
+[31m-COPY cmd/ ./cmd/[m
+[31m-COPY internal/ ./internal/[m
+[31m-COPY Makefile ./Makefile[m
+[31m-[m
+[31m-# Note: Migrations are not copied here - they will be run manually via Railway database connection[m
+[31m-# This avoids build issues if migrations directory isn't in build context[m
+[31m-RUN mkdir -p ./migrations[m
+[31m-[m
+[31m-# Build the application[m
+[31m-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server/main.go[m
+[31m-[m
+[31m-# Final stage[m
+[31m-FROM alpine:latest[m
+[31m-[m
+[31m-WORKDIR /app[m
+[31m-[m
+[31m-# Install ca-certificates for HTTPS requests and postgresql-client for backups[m
+[31m-RUN apk --no-cache add ca-certificates postgresql-client[m
+[31m-[m
+[31m-# Copy the binary from builder[m
+[31m-COPY --from=builder /app/server .[m
+[31m-[m
+[31m-# Create migrations directory (migrations run manually via Railway)[m
+[31m-RUN mkdir -p ./migrations[m
+[31m-[m
+[31m-# Create backups directory[m
+[31m-RUN mkdir -p /app/backups[m
+[31m-[m
+[31m-# Expose port[m
+[31m-EXPOSE 8080[m
+[31m-[m
+[31m-# Run the application[m
+[31m-CMD ["./server"][m
+[31m-[m
+[32m+[m[32m# Build stage[m
+[32m+[m[32mFROM golang:1.21-alpine AS builder[m
+[32m+[m
+[32m+[m[32mWORKDIR /app[m
+[32m+[m
+[32m+[m[32m# Install dependencies[m
+[32m+[m[32mRUN apk add --no-cache git[m
+[32m+[m
+[32m+[m[32m# Copy go mod files first[m
+[32m+[m[32mCOPY go.mod ./[m
+[32m+[m[32mCOPY go.sum* ./[m
+[32m+[m[32m# Download dependencies (go.sum is optional, will be generated if missing)[m
+[32m+[m[32mRUN go mod download[m
+[32m+[m
+[32m+[m[32m# Copy all source code[m
+[32m+[m[32mCOPY cmd/ ./cmd/[m
+[32m+[m[32mCOPY internal/ ./internal/[m
+[32m+[m[32mCOPY Makefile ./Makefile[m
+[32m+[m
+[32m+[m[32m# Note: Migrations are not copied here - they will be run manually via Railway database connection[m
+[32m+[m[32m# This avoids build issues if migrations directory isn't in build context[m
+[32m+[m[32mRUN mkdir -p ./migrations[m
+[32m+[m
+[32m+[m[32m# Build the application[m
+[32m+[m[32mRUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server/main.go[m
+[32m+[m
+[32m+[m[32m# Final stage[m
+[32m+[m[32mFROM alpine:latest[m
+[32m+[m
+[32m+[m[32mWORKDIR /app[m
+[32m+[m
+[32m+[m[32m# Install dependencies including Tailscale for ProPresenter connectivity[m
+[32m+[m[32m# Install Tailscale directly via apk (works better in containers than the install script)[m
+[32m+[m[32mRUN apk --no-cache add \[m
+[32m+[m[32m    ca-certificates \[m
+[32m+[m[32m    postgresql-client \[m
+[32m+[m[32m    curl \[m
+[32m+[m[32m    iptables \[m
+[32m+[m[32m    ip6tables \[m
+[32m+[m[32m    tailscale[m
+[32m+[m
+[32m+[m[32m# Copy the binary from builder[m
+[32m+[m[32mCOPY --from=builder /app/server .[m
+[32m+[m
+[32m+[m[32m# Copy start script[m
+[32m+[m[32mCOPY start.sh /app/start.sh[m
+[32m+[m[32mRUN chmod +x /app/start.sh[m
+[32m+[m
+[32m+[m[32m# Create directories[m
+[32m+[m[32mRUN mkdir -p ./migrations[m
+[32m+[m[32mRUN mkdir -p /app/backups[m
+[32m+[m[32mRUN mkdir -p /var/lib/tailscale[m
+[32m+[m[32mRUN mkdir -p /var/run/tailscale[m
+[32m+[m
+[32m+[m[32m# Expose port[m
+[32m+[m[32mEXPOSE 8080[m
+[32m+[m
+[32m+[m[32m# Run start script (starts Tailscale then server)[m
+[32m+[m[32mCMD ["/app/sta

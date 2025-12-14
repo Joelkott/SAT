@@ -61,7 +61,7 @@ func main() {
 	ppPlaylist := os.Getenv("PROPRESENTER_PLAYLIST") // Optional, defaults to "Live Queue"
 
 	if ppPort == "" {
-		ppPort = "1025" // ProPresenter default port
+		ppPort = "4031" // ProPresenter REST API default port
 	}
 
 	// Initialize database
