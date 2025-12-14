@@ -229,7 +229,7 @@ export default function Home() {
           }
         }
         
-        const result = await propresenterApi.sendToQueue(song.id, song.title, ppPlaylistName, ppThemeName || undefined);
+        const result = await propresenterApi.sendToQueue(song.id, song.title, ppPlaylistName, ppThemeName || undefined, song.lyrics);
         console.log('✅ ProPresenter sync successful:', result);
       } catch (err: any) {
         console.error('❌ Failed to sync with ProPresenter:', err);

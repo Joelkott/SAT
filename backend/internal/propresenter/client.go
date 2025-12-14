@@ -381,10 +381,94 @@ func (c *Client) ClearLayer(layer string) error {
 	return nil
 }
 
-// SendToLiveQueue finds a song by title and adds it to the "Live Queue" playlist
-// Returns the library item UUID if found
+// CreatePresentation creates a new presentation in ProPresenter with the given lyrics
+func (c *Client) CreatePresentation(title string, lyrics string) (*LibraryItem, error) {
+	if !c.enabled {
+		return nil, fmt.Errorf("ProPresenter integration is not enabled")
+	}
+
+	// Split lyrics into slides (by double newline or paragraph breaks)
+	lines := strings.Split(lyrics, "\n\n")
+	if len(lines) == 1 {
+		// If no double newlines, split by single newlines
+		lines = strings.Split(lyrics, "\n")
+	}
+
+	// Create slide groups - one group with all slides
+	slides := make([]Slide, 0)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			slides = append(slides, Slide{
+				Enabled: true,
+				Text:    line,
+				Notes:   "",
+			})
+		}
+	}
+
+	if len(slides) == 0 {
+		return nil, fmt.Errorf("no valid slides created from lyrics")
+	}
+
+	// Create presentation structure
+	presentation := Presentation{
+		ID: PresentationID{
+			UUID: "",
+			Name: title,
+		},
+		Groups: []SlideGroup{
+			{
+				Name:   "Lyrics",
+				Color:  "",
+				Slides: slides,
+			},
+		},
+	}
+
+	bodyBytes, err := json.Marshal(presentation)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal presentation: %w", err)
+	}
+
+	// POST to create presentation
+	resp, err := c.httpClient.Post(c.baseURL+"/v1/presentation", "application/json", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create presentation: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to create presentation, status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	// Decode response to get the created presentation
+	var createdPresentation Presentation
+	if err := json.NewDecoder(resp.Body).Decode(&createdPresentation); err != nil {
+		// If decode fails, try to find it by name
+		item, findErr := c.FindSongByTitle(title)
+		if findErr != nil {
+			return nil, fmt.Errorf("failed to decode created presentation and couldn't find it: %w", err)
+		}
+		return item, nil
+	}
+
+	// Convert to LibraryItem
+	return &LibraryItem{
+		ID: LibraryItemID{
+			UUID: createdPresentation.ID.UUID,
+			Name: createdPresentation.ID.Name,
+			Type: "presentation",
+		},
+		Type: "presentation",
+	}, nil
+}
+
+// SendToLiveQueue creates a new presentation from lyrics and adds it to the playlist
+// Returns the library item UUID
 // Includes retry logic for production resilience
-func (c *Client) SendToLiveQueue(songTitle string, playlistName string) (string, error) {
+func (c *Client) SendToLiveQueue(songTitle string, playlistName string, lyrics string) (string, error) {
 	if !c.enabled {
 		return "", fmt.Errorf("ProPresenter integration is not enabled")
 	}
@@ -393,22 +477,26 @@ func (c *Client) SendToLiveQueue(songTitle string, playlistName string) (string,
 		playlistName = "Live Queue"
 	}
 
+	if lyrics == "" {
+		return "", fmt.Errorf("lyrics are required to create presentation")
+	}
+
 	var item *LibraryItem
 	var playlist *Playlist
 	var err error
 
-	// Retry finding the song (up to 2 retries)
+	// Always create a new presentation from lyrics (no check for existing)
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
 			time.Sleep(300 * time.Millisecond)
 		}
-		item, err = c.FindSongByTitle(songTitle)
+		item, err = c.CreatePresentation(songTitle, lyrics)
 		if err == nil {
 			break
 		}
 	}
 	if err != nil {
-		return "", fmt.Errorf("song not found in ProPresenter library: %w", err)
+		return "", fmt.Errorf("failed to create presentation: %w", err)
 	}
 
 	// Retry finding/creating playlist

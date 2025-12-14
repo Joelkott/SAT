@@ -158,12 +158,14 @@ export const propresenterApi = {
   },
 
   // Send a song to the ProPresenter queue/playlist
-  sendToQueue: async (songId: string, songTitle: string, playlistName?: string, themeName?: string): Promise<ProPresenterQueueResult> => {
+  // If the song doesn't exist in ProPresenter, it will be created from the lyrics
+  sendToQueue: async (songId: string, songTitle: string, playlistName?: string, themeName?: string, lyrics?: string): Promise<ProPresenterQueueResult> => {
     const response = await api.post<ProPresenterQueueResult>('/propresenter/queue', {
       song_id: songId,
       song_title: songTitle,
       playlist_name: playlistName,
       theme_name: themeName,
+      lyrics: lyrics, // Include lyrics so ProPresenter can create the presentation if needed
     });
     return response.data;
   },

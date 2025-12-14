@@ -406,21 +406,27 @@ func (h *Handler) ProPresenterSendToQueue(c *fiber.Ctx) error {
 		SongID       string `json:"song_id"`
 		SongTitle    string `json:"song_title"`
 		PlaylistName string `json:"playlist_name"` // optional, defaults to "Live Queue"
-		ThemeName    string `json:"theme_name"`    // optional, theme to apply to the song
+		ThemeName    string `json:"theme_name"`     // optional, theme to apply to the song
+		Lyrics       string `json:"lyrics"`         // optional, lyrics content to create presentation if song doesn't exist
 	}
 
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	// If song_id provided, fetch title from database
-	songTitle := req.SongTitle
-	if songTitle == "" && req.SongID != "" {
+	// If song_id provided, fetch full song from database (including lyrics)
+	var songTitle string
+	var lyrics string
+	if req.SongID != "" {
 		song, err := h.db.GetSong(req.SongID)
 		if err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "Song not found"})
 		}
 		songTitle = song.Title
+		lyrics = song.Lyrics // Get lyrics from database
+	} else {
+		songTitle = req.SongTitle
+		lyrics = req.Lyrics // Use provided lyrics
 	}
 
 	if songTitle == "" {
@@ -432,7 +438,7 @@ func (h *Handler) ProPresenterSendToQueue(c *fiber.Ctx) error {
 		playlistName = "Live Queue"
 	}
 
-	uuid, err := h.propresenter.SendToLiveQueue(songTitle, playlistName)
+	uuid, err := h.propresenter.SendToLiveQueue(songTitle, playlistName, lyrics)
 	if err != nil {
 		log.Printf("Error sending to ProPresenter queue: %v", err)
 		// Don't fail the request completely - return partial success
