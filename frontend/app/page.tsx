@@ -216,13 +216,26 @@ export default function Home() {
       });
     }
 
-    // Sync with ProPresenter if enabled and connected
-    if (ppSyncEnabled && ppStatus?.connected) {
+    // Sync with ProPresenter if enabled
+    if (ppSyncEnabled) {
       setPpSyncing(true);
       try {
-        await propresenterApi.sendToQueue(song.id, song.title, ppPlaylistName, ppThemeName || undefined);
-      } catch (err) {
-        console.error('Failed to sync with ProPresenter:', err);
+        // Always try to sync - check status first if not already known
+        if (!ppStatus || !ppStatus.connected) {
+          const status = await propresenterApi.getStatus();
+          setPpStatus(status);
+          if (!status.connected) {
+            console.warn('ProPresenter not connected, but attempting sync anyway...');
+          }
+        }
+        
+        const result = await propresenterApi.sendToQueue(song.id, song.title, ppPlaylistName, ppThemeName || undefined);
+        console.log('✅ ProPresenter sync successful:', result);
+      } catch (err: any) {
+        console.error('❌ Failed to sync with ProPresenter:', err);
+        // Show user-friendly error
+        const errorMessage = err?.response?.data?.message || err?.message || 'Unknown error';
+        alert(`ProPresenter sync failed: ${errorMessage}`);
       } finally {
         setPpSyncing(false);
       }
@@ -516,7 +529,13 @@ export default function Home() {
                           : 'Not Configured'}
                     </div>
                     <div className="text-xs text-gray-500">
-                      {ppSyncing ? 'Syncing...' : ppSyncEnabled ? 'Auto-sync enabled' : 'Auto-sync disabled'}
+                      {ppSyncing 
+                      ? 'Syncing...' 
+                      : ppStatus?.connected 
+                        ? 'Auto-sync enabled' 
+                        : ppStatus?.enabled 
+                          ? `Not connected: ${ppStatus.message || 'Unknown'}` 
+                          : 'Auto-sync disabled'}
                     </div>
                   </div>
                   <button
