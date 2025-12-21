@@ -120,21 +120,21 @@ export default function SongFullScreen({ song, onClose, onEdit, onDelete }: Song
       {/* Main content area - full screen lyrics */}
       <div className="flex-1 overflow-y-auto p-8">
         <div className="max-w-5xl mx-auto">
-          {/* Lyrics */}
+          {/* Music Ministry Lyrics (shown to user) */}
           <div className="mb-8">
             <pre className={`whitespace-pre-wrap font-sans text-2xl leading-relaxed text-white text-${textAlign}`}>
-              {song.lyrics}
+              {song.music_ministry_lyrics}
             </pre>
           </div>
 
-          {/* Full Content (if different from lyrics) */}
-          {song.content && song.content !== song.lyrics && (
+          {/* Display Lyrics (for ProPresenter, if different) */}
+          {song.display_lyrics && song.display_lyrics !== song.music_ministry_lyrics && (
             <div className="mt-12 pt-8 border-t border-gray-700">
               <h2 className="text-xl font-semibold text-gray-400 mb-4 uppercase tracking-wide">
-                Full Content
+                Display Lyrics (ProPresenter)
               </h2>
               <pre className="whitespace-pre-wrap font-sans text-xl leading-relaxed text-gray-300">
-                {song.content}
+                {song.display_lyrics}
               </pre>
             </div>
           )}

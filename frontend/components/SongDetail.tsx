@@ -26,27 +26,27 @@ export default function SongDetail({ song, onEdit, onDelete }: SongDetailProps) 
 
       {/* Content */}
       <div className="p-6 space-y-6">
-        {/* Lyrics */}
+        {/* Music Ministry Lyrics (shown to user) */}
         <div>
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">
-            Lyrics
+            Music Ministry Lyrics
           </h3>
           <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-lg max-h-[600px] overflow-y-auto">
             <pre className="whitespace-pre-wrap font-sans text-lg leading-relaxed text-gray-900 dark:text-white">
-              {song.lyrics}
+              {song.music_ministry_lyrics}
             </pre>
           </div>
         </div>
 
-        {/* Full Content (if different from lyrics) */}
-        {song.content && song.content !== song.lyrics && (
+        {/* Display Lyrics (for ProPresenter, if different) */}
+        {song.display_lyrics && song.display_lyrics !== song.music_ministry_lyrics && (
           <div>
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">
-              Full Content
+              Display Lyrics (ProPresenter)
             </h3>
             <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-lg max-h-[600px] overflow-y-auto">
               <pre className="whitespace-pre-wrap font-sans text-gray-900 dark:text-white">
-                {song.content}
+                {song.display_lyrics}
               </pre>
             </div>
           </div>

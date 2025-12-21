@@ -62,7 +62,7 @@ export default function SongList({ songs, onSelectSong, selectedSongId, loading,
                   {song.language || 'Unknown'}
                 </span>
                 <span className="text-gray-500 truncate">
-                  {song.lyrics.substring(0, 80)}...
+                  {song.music_ministry_lyrics ? song.music_ministry_lyrics.substring(0, 80) + '...' : 'No lyrics'}
                 </span>
               </div>
             </div>

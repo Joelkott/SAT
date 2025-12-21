@@ -100,9 +100,9 @@ func (c *Client) IndexSong(song *models.Song) error {
 	doc := map[string]interface{}{
 		"id":         song.ID,
 		"title":      song.Title,
-		"lyrics":     song.Lyrics,
+		"lyrics":     song.DisplayLyrics,
 		"language":   song.Language,
-		"content":    song.Content,
+		"content":    song.MusicMinistryLyrics,
 		"updated_at": song.UpdatedAt.Unix(),
 	}
 
@@ -190,11 +190,13 @@ func (c *Client) Search(query string, languages []string) (*SearchResult, error)
 		for _, hit := range *result.Hits {
 			doc := *hit.Document
 			song := models.Song{
-				ID:       doc["id"].(string),
-				Title:    doc["title"].(string),
-				Lyrics:   doc["lyrics"].(string),
-				Language: doc["language"].(string),
-				Content:  doc["content"].(string),
+				ID:                  doc["id"].(string),
+				Title:               doc["title"].(string),
+				Library:             "", // Not stored in Typesense, will be empty
+				DisplayLyrics:       doc["lyrics"].(string),
+				Language:            doc["language"].(string),
+				MusicMinistryLyrics: doc["content"].(string),
+				CreatedAt:           time.Now(), // Not stored in Typesense, using current time as default
 			}
 
 			if artist, ok := doc["artist"].(string); ok {
@@ -203,6 +205,8 @@ func (c *Client) Search(query string, languages []string) (*SearchResult, error)
 
 			if updatedAt, ok := doc["updated_at"].(float64); ok {
 				song.UpdatedAt = time.Unix(int64(updatedAt), 0)
+			} else {
+				song.UpdatedAt = time.Now()
 			}
 
 			songs = append(songs, song)

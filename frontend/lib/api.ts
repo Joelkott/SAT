@@ -7,33 +7,41 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 second timeout
 });
 
 export interface Song {
   id: string;
   title: string;
-  artist?: string;
-  lyrics: string;
+  file_name?: string;
+  library: string;
   language: string;
-  content: string;
+  pro_uuid?: string;
+  display_lyrics: string;
+  music_ministry_lyrics: string;
+  artist?: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface CreateSongRequest {
   title: string;
-  artist?: string;
-  lyrics: string;
+  file_name?: string;
+  library: string;
   language: string;
-  content: string;
+  pro_uuid?: string;
+  display_lyrics: string;
+  music_ministry_lyrics: string;
+  artist?: string;
 }
 
 export interface UpdateSongRequest {
   title?: string;
-  artist?: string;
-  lyrics?: string;
+  library?: string;
   language?: string;
-  content?: string;
+  display_lyrics?: string;
+  music_ministry_lyrics?: string;
+  artist?: string;
 }
 
 export interface SearchResult {
@@ -194,6 +202,40 @@ export const propresenterApi = {
   // Clear a layer
   clear: async (layer?: string): Promise<{ success: boolean; message: string; layer: string }> => {
     const response = await api.post(`/propresenter/clear${layer ? `?layer=${layer}` : ''}`);
+    return response.data;
+  },
+};
+
+// Settings
+export interface Settings {
+  id: number;
+  laptop_b_ip: string;
+  laptop_b_port: number;
+  live_playlist_uuid: string;
+  propresenter_host: string;
+  propresenter_port: number;
+  propresenter_playlist: string;
+  propresenter_playlist_uuid: string;
+  updated_at: string;
+}
+
+export interface UpdateSettingsRequest {
+  propresenter_host?: string;
+  propresenter_port?: number;
+  propresenter_playlist?: string;
+  propresenter_playlist_uuid?: string;
+}
+
+export const settingsApi = {
+  // Get settings
+  get: async (): Promise<Settings> => {
+    const response = await api.get<Settings>('/settings');
+    return response.data;
+  },
+
+  // Update settings
+  update: async (data: UpdateSettingsRequest): Promise<Settings> => {
+    const response = await api.put<Settings>('/settings', data);
     return response.data;
   },
 };

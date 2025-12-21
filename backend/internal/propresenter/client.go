@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -16,6 +17,10 @@ type Client struct {
 	baseURL    string
 	httpClient *http.Client
 	enabled    bool
+	config     *Config
+	connected  bool
+	lastCheck  time.Time
+	mu         sync.RWMutex
 }
 
 // Config holds ProPresenter configuration
@@ -106,7 +111,7 @@ func New(config *Config) *Client {
 
 	baseURL := fmt.Sprintf("http://%s:%s", config.Host, config.Port)
 	
-	return &Client{
+	client := &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second, // Shorter timeout for production
@@ -118,12 +123,97 @@ func New(config *Config) *Client {
 				ResponseHeaderTimeout: 3 * time.Second,
 			},
 		},
-		enabled: true,
+		enabled:   true,
+		config:    config,
+		connected: false,
 	}
+	
+	// Check connection on initialization
+	if err := client.Health(); err == nil {
+		client.mu.Lock()
+		client.connected = true
+		client.lastCheck = time.Now()
+		client.mu.Unlock()
+	}
+	
+	return client
+}
+
+// Reconfigure updates the client configuration and checks connection
+func (c *Client) Reconfigure(config *Config) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
+	if config == nil || !config.Enabled || config.Host == "" {
+		c.enabled = false
+		c.connected = false
+		return nil
+	}
+	
+	c.config = config
+	c.baseURL = fmt.Sprintf("http://%s:%s", config.Host, config.Port)
+	c.enabled = true
+	
+	// Check connection with new configuration
+	if err := c.healthCheckLocked(); err == nil {
+		c.connected = true
+		c.lastCheck = time.Now()
+	} else {
+		c.connected = false
+	}
+	
+	return nil
+}
+
+// IsConnected returns whether ProPresenter is currently connected
+func (c *Client) IsConnected() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.connected
+}
+
+// healthCheckLocked performs health check without acquiring lock (must be called with lock held)
+func (c *Client) healthCheckLocked() error {
+	resp, err := c.httpClient.Get(c.baseURL + "/v1/status")
+	if err != nil {
+		return fmt.Errorf("ProPresenter not reachable: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ProPresenter returned status %d", resp.StatusCode)
+	}
+	
+	return nil
+}
+
+// StartPeriodicHealthCheck starts a goroutine that checks ProPresenter health periodically
+func (c *Client) StartPeriodicHealthCheck(interval time.Duration) {
+	if !c.enabled {
+		return
+	}
+	
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		
+		for range ticker.C {
+			c.mu.Lock()
+			if err := c.healthCheckLocked(); err == nil {
+				c.connected = true
+				c.lastCheck = time.Now()
+			} else {
+				c.connected = false
+			}
+			c.mu.Unlock()
+		}
+	}()
 }
 
 // IsEnabled returns whether ProPresenter integration is enabled
 func (c *Client) IsEnabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.enabled
 }
 
@@ -274,21 +364,34 @@ func (c *Client) CreatePlaylist(name string) (*Playlist, error) {
 	return &playlist, nil
 }
 
-// AddToPlaylist adds a library item to a playlist
+// AddToPlaylist adds a library item to a playlist using PUT method
+// Format: [{"id":{"uuid":"..."},"type":"presentation"}]
 func (c *Client) AddToPlaylist(playlistUUID, libraryItemUUID string) error {
 	if !c.enabled {
 		return fmt.Errorf("ProPresenter integration is not enabled")
 	}
 
-	// ProPresenter API: POST /v1/playlist/{playlist_id}
+	// ProPresenter API: PUT /v1/playlist/{playlist_id}
 	endpoint := fmt.Sprintf("%s/v1/playlist/%s", c.baseURL, playlistUUID)
 	
-	payload := map[string]string{
-		"id": libraryItemUUID,
+	// Use the format: [{"id":{"uuid":"..."},"type":"presentation"}]
+	payload := []map[string]interface{}{
+		{
+			"id": map[string]string{
+				"uuid": libraryItemUUID,
+			},
+			"type": "presentation",
+		},
 	}
 	body, _ := json.Marshal(payload)
 
-	resp, err := c.httpClient.Post(endpoint, "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest("PUT", endpoint, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to add to playlist: %w", err)
 	}
@@ -443,29 +546,44 @@ func (c *Client) CreatePresentation(title string, lyrics string) (*LibraryItem, 
 		return nil, fmt.Errorf("failed to create presentation, status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	// Decode response to get the created presentation
-	var createdPresentation Presentation
-	if err := json.NewDecoder(resp.Body).Decode(&createdPresentation); err != nil {
-		// If decode fails, try to find it by name
-		item, findErr := c.FindSongByTitle(title)
-		if findErr != nil {
-			return nil, fmt.Errorf("failed to decode created presentation and couldn't find it: %w", err)
+	// ProPresenter may not return the created presentation in response
+	// So we need to search for it by name after creation
+	// Wait a brief moment for ProPresenter to index it
+	time.Sleep(500 * time.Millisecond)
+	
+	// Try to find the presentation we just created by searching for it
+	var item *LibraryItem
+	// err is already declared above, so we use = instead of :=
+	for attempt := 0; attempt < 5; attempt++ {
+		if attempt > 0 {
+			time.Sleep(300 * time.Millisecond)
 		}
-		return item, nil
+		item, err = c.FindSongByTitle(title)
+		if err == nil {
+			return item, nil
+		}
 	}
-
-	// Convert to LibraryItem
-	return &LibraryItem{
-		ID: LibraryItemID{
-			UUID: createdPresentation.ID.UUID,
-			Name: createdPresentation.ID.Name,
-			Type: "presentation",
-		},
-		Type: "presentation",
-	}, nil
+	
+	// If we still can't find it, try decoding the response (some versions might return it)
+	resp.Body.Close()
+	resp, err = c.httpClient.Get(c.baseURL + "/v1/library?q=" + url.QueryEscape(title))
+	if err == nil {
+		defer resp.Body.Close()
+		var items []LibraryItem
+		if json.NewDecoder(resp.Body).Decode(&items) == nil && len(items) > 0 {
+			// Find exact match
+			for _, it := range items {
+				if strings.EqualFold(strings.TrimSpace(it.ID.Name), strings.TrimSpace(title)) {
+					return &it, nil
+				}
+			}
+		}
+	}
+	
+	return nil, fmt.Errorf("created presentation but couldn't find it: %w", err)
 }
 
-// SendToLiveQueue creates a new presentation from lyrics and adds it to the playlist
+// SendToLiveQueue finds an existing song in the library and adds it to the playlist
 // Returns the library item UUID
 // Includes retry logic for production resilience
 func (c *Client) SendToLiveQueue(songTitle string, playlistName string, lyrics string) (string, error) {
@@ -477,26 +595,26 @@ func (c *Client) SendToLiveQueue(songTitle string, playlistName string, lyrics s
 		playlistName = "Live Queue"
 	}
 
-	if lyrics == "" {
-		return "", fmt.Errorf("lyrics are required to create presentation")
+	if songTitle == "" {
+		return "", fmt.Errorf("song title is required")
 	}
 
 	var item *LibraryItem
 	var playlist *Playlist
 	var err error
 
-	// Always create a new presentation from lyrics (no check for existing)
+	// Find existing song in library (no presentation creation)
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
 			time.Sleep(300 * time.Millisecond)
 		}
-		item, err = c.CreatePresentation(songTitle, lyrics)
+		item, err = c.FindSongByTitle(songTitle)
 		if err == nil {
 			break
 		}
 	}
 	if err != nil {
-		return "", fmt.Errorf("failed to create presentation: %w", err)
+		return "", fmt.Errorf("song '%s' not found in ProPresenter library: %w", songTitle, err)
 	}
 
 	// Retry finding/creating playlist
@@ -528,8 +646,13 @@ func (c *Client) SendToLiveQueue(songTitle string, playlistName string, lyrics s
 }
 
 // Health checks if ProPresenter is reachable with retry logic
+// Updates the connected state
 func (c *Client) Health() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
 	if !c.enabled {
+		c.connected = false
 		return fmt.Errorf("ProPresenter integration is not enabled")
 	}
 
@@ -540,24 +663,19 @@ func (c *Client) Health() error {
 			time.Sleep(500 * time.Millisecond) // Brief delay between retries
 		}
 
-		resp, err := c.httpClient.Get(c.baseURL + "/v1/status")
-		if err != nil {
-			lastErr = fmt.Errorf("ProPresenter not reachable: %w", err)
+		if err := c.healthCheckLocked(); err != nil {
+			lastErr = err
 			continue
 		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == http.StatusOK {
-			return nil // Success
-		}
-
-		lastErr = fmt.Errorf("ProPresenter returned status %d", resp.StatusCode)
-		if resp.StatusCode < 500 {
-			// Client errors (4xx) don't benefit from retries
-			break
-		}
+		
+		// Success
+		c.connected = true
+		c.lastCheck = time.Now()
+		return nil
 	}
 
+	// Failed after retries
+	c.connected = false
 	return lastErr
 }
 

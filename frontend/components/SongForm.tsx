@@ -5,7 +5,7 @@ import { Song, songsApi, CreateSongRequest, UpdateSongRequest } from '@/lib/api'
 
 interface SongFormProps {
   song?: Song | null;
-  onSubmit: () => void;
+  onSubmit: (updatedSong?: Song) => void;
   onCancel: () => void;
 }
 
@@ -14,9 +14,10 @@ const LANGUAGES = ['english', 'malayalam', 'hindi', 'tamil', 'telugu', 'kannada'
 export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
-  const [lyrics, setLyrics] = useState('');
+  const [library, setLibrary] = useState('Joshua English Slides');
+  const [displayLyrics, setDisplayLyrics] = useState('');
   const [language, setLanguage] = useState('english');
-  const [content, setContent] = useState('');
+  const [musicMinistryLyrics, setMusicMinistryLyrics] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -24,9 +25,10 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
     if (song) {
       setTitle(song.title);
       setArtist(song.artist || '');
-      setLyrics(song.lyrics);
+      setLibrary(song.library);
+      setDisplayLyrics(song.display_lyrics);
       setLanguage(song.language);
-      setContent(song.content);
+      setMusicMinistryLyrics(song.music_ministry_lyrics);
     }
   }, [song]);
 
@@ -34,8 +36,14 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
     e.preventDefault();
     setError('');
 
-    if (!title.trim() || !lyrics.trim() || !language) {
-      setError('Title, lyrics, and language are required');
+    if (!title.trim() || !language || !library) {
+      setError('Title, language, and library are required');
+      return;
+    }
+    
+    // At least one lyrics field must be provided
+    if (!displayLyrics.trim() && !musicMinistryLyrics.trim()) {
+      setError('At least one lyrics field (Display Lyrics or Music Ministry Lyrics) is required');
       return;
     }
 
@@ -43,30 +51,51 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
       setLoading(true);
 
       if (song) {
-        // Update existing song
+        // Update existing song - send all fields that should be updated
         const updates: UpdateSongRequest = {
           title: title.trim(),
-          artist: artist.trim() || undefined,
-          lyrics: lyrics.trim(),
+          library: library.trim(),
           language: language,
-          content: content.trim() || lyrics.trim(),
         };
-        await songsApi.update(song.id, updates);
+        
+        // Handle lyrics - use provided values or fallbacks
+        if (displayLyrics.trim()) {
+          updates.display_lyrics = displayLyrics.trim();
+        }
+        if (musicMinistryLyrics.trim()) {
+          updates.music_ministry_lyrics = musicMinistryLyrics.trim();
+        } else if (displayLyrics.trim()) {
+          // Fallback to display lyrics if music ministry lyrics is empty
+          updates.music_ministry_lyrics = displayLyrics.trim();
+        }
+        
+        // Handle artist - can be empty string to clear it
+        if (artist.trim()) {
+          updates.artist = artist.trim();
+        } else {
+          updates.artist = '';
+        }
+        
+        const updatedSong = await songsApi.update(song.id, updates);
+        onSubmit(updatedSong);
       } else {
         // Create new song
         const newSong: CreateSongRequest = {
           title: title.trim(),
           artist: artist.trim() || undefined,
-          lyrics: lyrics.trim(),
+          library: library.trim(),
+          display_lyrics: displayLyrics.trim(),
           language: language,
-          content: content.trim() || lyrics.trim(),
+          music_ministry_lyrics: musicMinistryLyrics.trim() || displayLyrics.trim(),
         };
-        await songsApi.create(newSong);
+        const createdSong = await songsApi.create(newSong);
+        onSubmit(createdSong);
       }
-
-      onSubmit();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to save song');
+      console.error('Error saving song:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Failed to save song';
+      setError(errorMessage);
+      // Don't close form on error so user can retry
     } finally {
       setLoading(false);
     }
@@ -136,38 +165,56 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
           </select>
         </div>
 
-        {/* Lyrics */}
+        {/* Library */}
         <div>
-          <label htmlFor="lyrics" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Lyrics *
+          <label htmlFor="library" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Library *
           </label>
-          <textarea
-            id="lyrics"
-            value={lyrics}
-            onChange={(e) => setLyrics(e.target.value)}
-            rows={12}
+          <input
+            id="library"
+            type="text"
+            value={library}
+            onChange={(e) => setLibrary(e.target.value)}
             className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg
                      focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     dark:bg-gray-700 dark:text-white font-mono"
-            placeholder="Enter song lyrics..."
+                     dark:bg-gray-700 dark:text-white"
+            placeholder="e.g., Joshua English Slides"
             required
           />
         </div>
 
-        {/* Content (optional, defaults to lyrics) */}
+        {/* Display Lyrics */}
         <div>
-          <label htmlFor="content" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Full Content (Optional, defaults to lyrics)
+          <label htmlFor="displayLyrics" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Display Lyrics *
           </label>
           <textarea
-            id="content"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
+            id="displayLyrics"
+            value={displayLyrics}
+            onChange={(e) => setDisplayLyrics(e.target.value)}
+            rows={12}
+            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg
+                     focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                     dark:bg-gray-700 dark:text-white font-mono"
+            placeholder="Enter display lyrics..."
+            required
+          />
+        </div>
+
+        {/* Music Ministry Lyrics (optional, defaults to display lyrics) */}
+        <div>
+          <label htmlFor="musicMinistryLyrics" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Music Ministry Version (Original)
+          </label>
+          <textarea
+            id="musicMinistryLyrics"
+            value={musicMinistryLyrics}
+            onChange={(e) => setMusicMinistryLyrics(e.target.value)}
             rows={8}
             className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg
                      focus:ring-2 focus:ring-blue-500 focus:border-transparent
                      dark:bg-gray-700 dark:text-white font-mono"
-            placeholder="Enter full content (if different from lyrics)"
+            placeholder="Original/archive version (defaults to display lyrics)"
           />
         </div>
 

@@ -6,6 +6,7 @@ import SearchBar from '@/components/SearchBar';
 import SongList from '@/components/SongList';
 import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
+import SettingsDialog from '@/components/SettingsDialog';
 
 export default function Home() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -28,6 +29,7 @@ export default function Home() {
   const [ppPlaylistName, setPpPlaylistName] = useState('Live Queue');
   const [ppThemeName, setPpThemeName] = useState('');
   const [ppNotification, setPpNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const displayChannelRef = useRef<BroadcastChannel | null>(null);
   const [leftWidth, setLeftWidth] = useState(0.6);
   const [isDragging, setIsDragging] = useState(false);
@@ -222,8 +224,8 @@ export default function Home() {
         id: song.id,
         title: song.title,
         artist: song.artist,
-        lyrics: song.lyrics,
-        content: song.content,
+        lyrics: song.music_ministry_lyrics,
+        content: song.display_lyrics,
         language: song.language,
       },
     };
@@ -251,7 +253,7 @@ export default function Home() {
           }
         }
         
-        const result = await propresenterApi.sendToQueue(song.id, song.title, ppPlaylistName, ppThemeName || undefined, song.lyrics);
+        const result = await propresenterApi.sendToQueue(song.id, song.title, ppPlaylistName, ppThemeName || undefined, song.display_lyrics || song.music_ministry_lyrics);
         console.log('✅ ProPresenter sync successful:', result);
         // Show success notification
         setPpNotification({ message: 'Pushed to ProPresenter', type: 'success' });
@@ -282,34 +284,93 @@ export default function Home() {
     if (!confirm('Are you sure you want to delete this song?')) return false;
 
     try {
-      await songsApi.delete(songId);
-      await loadSongs();
+      // Optimistic update: Remove from state immediately
+      setSongs(prevSongs => prevSongs.filter(song => song.id !== songId));
+      
+      // Update search results if the song is in there
+      if (searchResults) {
+        setSearchResults(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            songs: prev.songs.filter(song => song.id !== songId),
+            total_found: prev.total_found - 1
+          };
+        });
+      }
+      
+      // Clear selection if deleted song was selected
       if (selectedSong?.id === songId) {
         setSelectedSong(null);
         localStorage.removeItem('lyrics-display-current');
         displayChannelRef.current?.postMessage({ type: 'clear' });
       }
+      
+      // Clear live song if deleted song was live
+      if (liveSong?.id === songId) {
+        setLiveSong(null);
+      }
+      
+      // Actually delete from server
+      await songsApi.delete(songId);
+      
       return true;
     } catch (error) {
       console.error('Error deleting song:', error);
+      // Revert optimistic update on error
+      await loadSongs();
       alert('Failed to delete song');
       return false;
     }
   };
 
-  const handleFormSubmit = async () => {
+  const handleFormSubmit = async (updatedSong?: Song) => {
     setShowForm(false);
     const editedSongId = editingSong?.id;
     setEditingSong(null);
-    await loadSongs();
     
-    // If the edited song was the live song, update it
-    if (editedSongId && liveSong?.id === editedSongId) {
-      const updatedSongs = await songsApi.getAll();
-      const updatedSong = updatedSongs.find(s => s.id === editedSongId);
-      if (updatedSong) {
+    if (updatedSong) {
+      // Optimistic update: Use the song returned from the API
+      const songId = updatedSong.id;
+      
+      // Update the song in the local state
+      setSongs(prevSongs => {
+        // If it's a new song, add it; otherwise update existing
+        const exists = prevSongs.some(s => s.id === songId);
+        if (exists) {
+          return prevSongs.map(song => song.id === songId ? updatedSong : song);
+        } else {
+          return [updatedSong, ...prevSongs];
+        }
+      });
+      
+      // Update search results if the song is in there
+      if (searchResults) {
+        setSearchResults(prev => {
+          if (!prev) return prev;
+          const exists = prev.songs.some(s => s.id === songId);
+          return {
+            ...prev,
+            songs: exists 
+              ? prev.songs.map(song => song.id === songId ? updatedSong : song)
+              : [updatedSong, ...prev.songs],
+            total_found: exists ? prev.total_found : prev.total_found + 1
+          };
+        });
+      }
+      
+      // If the edited song was the live song, update it
+      if (liveSong?.id === songId) {
         handleSendToLive(updatedSong);
       }
+      
+      // If the edited song was selected, update it
+      if (selectedSong?.id === songId) {
+        setSelectedSong(updatedSong);
+      }
+    } else {
+      // Fallback: If no song returned, reload all songs
+      await loadSongs();
     }
   };
 
@@ -433,7 +494,7 @@ export default function Home() {
             <div className="flex-1 overflow-y-auto bg-black p-4 sm:p-6">
               <div className="max-w-4xl mx-auto">
                 <pre className="whitespace-pre-wrap font-sans text-base sm:text-lg leading-relaxed text-white text-center">
-                  {previewSong.lyrics}
+                  {previewSong.music_ministry_lyrics}
                 </pre>
               </div>
             </div>
@@ -447,6 +508,17 @@ export default function Home() {
             <div className="flex-1">
               <SearchBar onSearch={handleSearch} />
             </div>
+            <button
+              onClick={() => setShowSettings(true)}
+              aria-label="Settings"
+              className="shrink-0 h-10 w-10 flex items-center justify-center rounded-md bg-[#1a1b1f] border border-[#2a2c31] text-gray-100 hover:border-[#3a3c42] transition-colors"
+              title="Settings"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
             <button
               onClick={handleCreateNew}
               aria-label="Add new song"
@@ -763,7 +835,7 @@ export default function Home() {
                             className={`whitespace-pre-wrap text-${textAlign} w-full leading-relaxed text-white`}
                             style={{ fontSize: `${0.875 * zoomLevel}rem` }}
                           >
-                            {selectedSong.lyrics}
+                            {selectedSong.music_ministry_lyrics}
                           </pre>
                         </div>
                       </div>
@@ -798,6 +870,16 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Settings Dialog */}
+      <SettingsDialog
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        onSave={() => {
+          // Reload ProPresenter status after settings change
+          checkProPresenterStatus();
+        }}
+      />
     </>
   );
 }

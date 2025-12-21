@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -28,14 +30,19 @@ func main() {
 		log.Fatal("DATABASE_URL environment variable is required")
 	}
 
+	// Typesense is optional - can be disabled
+	disableTypesense := os.Getenv("DISABLE_TYPESENSE") == "true"
 	typesenseAPIKey := os.Getenv("TYPESENSE_API_KEY")
-	if typesenseAPIKey == "" {
-		log.Fatal("TYPESENSE_API_KEY environment variable is required")
-	}
-
 	typesenseHost := os.Getenv("TYPESENSE_HOST")
-	if typesenseHost == "" {
-		log.Fatal("TYPESENSE_HOST environment variable is required")
+	
+	var ts *typesense.Client
+	if !disableTypesense {
+		if typesenseAPIKey == "" {
+			log.Fatal("TYPESENSE_API_KEY environment variable is required (or set DISABLE_TYPESENSE=true)")
+		}
+		if typesenseHost == "" {
+			log.Fatal("TYPESENSE_HOST environment variable is required (or set DISABLE_TYPESENSE=true)")
+		}
 	}
 
 	backupDir := os.Getenv("BACKUP_DIR")
@@ -71,30 +78,74 @@ func main() {
 	}
 	defer db.Close()
 
-	// Initialize Typesense
-	ts, err := typesense.New(typesenseAPIKey, typesenseHost)
-	if err != nil {
-		log.Fatalf("Failed to initialize Typesense: %v", err)
+	// Initialize Typesense (optional)
+	if !disableTypesense {
+		ts, err = typesense.New(typesenseAPIKey, typesenseHost)
+		if err != nil {
+			log.Fatalf("Failed to initialize Typesense: %v", err)
+		}
+		log.Println("Typesense client initialized")
+	} else {
+		log.Println("⚠️  Typesense is disabled - search will use PostgreSQL")
 	}
 
 	// Initialize backup manager (backup every 100 edits)
 	backupManager := backup.NewManager(dbDSN, backupDir, 100)
 	backupManager.Start()
 
-	// Initialize ProPresenter client (optional)
+	// Initialize ProPresenter client from database settings
 	var ppClient *propresenter.Client
-	if ppEnabled && ppHost != "" {
-		ppConfig := &propresenter.Config{
-			Host:       ppHost,
-			Port:       ppPort,
-			Enabled:    true,
-			PlaylistID: ppPlaylist,
+	settings, err := db.GetSettings()
+	if err != nil {
+		log.Printf("⚠️  Warning: Could not load settings from database: %v", err)
+		// Fallback to environment variables
+		if ppEnabled && ppHost != "" {
+			ppConfig := &propresenter.Config{
+				Host:       ppHost,
+				Port:       ppPort,
+				Enabled:    true,
+				PlaylistID: ppPlaylist,
+			}
+			ppClient = propresenter.New(ppConfig)
+			log.Printf("✅ ProPresenter integration enabled (from env): %s:%s", ppHost, ppPort)
+		} else {
+			ppClient = propresenter.New(nil)
+			log.Println("ℹ️  ProPresenter integration disabled")
 		}
-		ppClient = propresenter.New(ppConfig)
-		log.Printf("✅ ProPresenter integration enabled: %s:%s", ppHost, ppPort)
 	} else {
-		ppClient = propresenter.New(nil)
-		log.Println("ℹ️  ProPresenter integration disabled")
+		// Use database settings
+		if settings.ProPresenterHost != "" && settings.ProPresenterPort > 0 {
+			ppConfig := &propresenter.Config{
+				Host:       settings.ProPresenterHost,
+				Port:       fmt.Sprintf("%d", settings.ProPresenterPort),
+				Enabled:    true,
+				PlaylistID: settings.ProPresenterPlaylist,
+			}
+			ppClient = propresenter.New(ppConfig)
+			if ppClient.IsConnected() {
+				log.Printf("✅ ProPresenter integration enabled and connected: %s:%d", settings.ProPresenterHost, settings.ProPresenterPort)
+			} else {
+				log.Printf("⚠️  ProPresenter integration enabled but not connected: %s:%d", settings.ProPresenterHost, settings.ProPresenterPort)
+			}
+			// Start periodic health checks (every 30 seconds)
+			ppClient.StartPeriodicHealthCheck(30 * time.Second)
+		} else {
+			// Fallback to environment variables if database settings are empty
+			if ppEnabled && ppHost != "" {
+				ppConfig := &propresenter.Config{
+					Host:       ppHost,
+					Port:       ppPort,
+					Enabled:    true,
+					PlaylistID: ppPlaylist,
+				}
+				ppClient = propresenter.New(ppConfig)
+				log.Printf("✅ ProPresenter integration enabled (from env): %s:%s", ppHost, ppPort)
+				ppClient.StartPeriodicHealthCheck(30 * time.Second)
+			} else {
+				ppClient = propresenter.New(nil)
+				log.Println("ℹ️  ProPresenter integration disabled")
+			}
+		}
 	}
 
 	// Initialize handlers
@@ -138,6 +189,10 @@ func main() {
 	admin.Get("/backups", h.GetBackups)
 	admin.Post("/backups", h.CreateBackup)
 
+	// Settings
+	api.Get("/settings", h.GetSettings)
+	api.Put("/settings", h.UpdateSettings)
+
 	// ProPresenter integration
 	pp := api.Group("/propresenter")
 	pp.Get("/status", h.ProPresenterStatus)
@@ -153,7 +208,9 @@ func main() {
 	log.Printf("Server starting on port %s", port)
 	log.Printf("Backup directory: %s", backupDir)
 	log.Printf("Database connected: %s", dbDSN)
-	log.Printf("Typesense host: %s", typesenseHost)
+	if !disableTypesense {
+		log.Printf("Typesense host: %s", typesenseHost)
+	}
 
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
