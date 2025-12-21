@@ -57,4 +57,3 @@ EXPOSE 8080
 
 # Run start script (starts Tailscale then server)
 CMD ["/app/start.sh"]
-
