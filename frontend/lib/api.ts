@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = process.env.API_URL || 'http://localhost:8080/api';
+// Use NEXT_PUBLIC_ prefix for client-side access
+// Falls back to server-side API_URL, then localhost
+const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8080/api';
 
 const api = axios.create({
   baseURL: API_URL,
