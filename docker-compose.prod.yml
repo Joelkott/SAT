@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14-alpine
+    container_name: teleprompter-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: teleprompter_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: teleprompter
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - teleprompter-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teleprompter_user -d teleprompter"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: teleprompter-backend
+    restart: unless-stopped
+    network_mode: "host"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://teleprompter_user:${POSTGRES_PASSWORD}@localhost:5432/teleprompter
+      DISABLE_TYPESENSE: "true"
+      SKIP_TYPESENSE: "true"
+      PORT: "8080"
+      BACKUP_DIR: /app/backups
+      PROPRESENTER_ENABLED: ${PROPRESENTER_ENABLED}
+      PROPRESENTER_HOST: ${PROPRESENTER_HOST}
+      PROPRESENTER_PORT: ${PROPRESENTER_PORT}
+      PROPRESENTER_PLAYLIST: ${PROPRESENTER_PLAYLIST}
+    volumes:
+      - backups_data:/app/backups
+
+networks:
+  teleprompter-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  backups_data:

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { Song } from '@/lib/api';
-import SplitLyricsView from '@/components/SplitLyricsView';
+import SplitLyricsView, { SplitLyricsViewRef } from '@/components/SplitLyricsView';
 
 type DisplaySong = {
   id: string;
@@ -20,14 +20,26 @@ export default function Display() {
   const [zoomLevel, setZoomLevel] = useState(1.0);
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
   const [showControls, setShowControls] = useState(true);
+  const [fontFamily, setFontFamily] = useState('system-ui');
+  const [lineSpacing, setLineSpacing] = useState(1.5);
+  const [paragraphSpacing, setParagraphSpacing] = useState(1.0);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+  const splitLyricsRef = useRef<SplitLyricsViewRef>(null);
+
   // Load alignment preference from localStorage
   useEffect(() => {
     const savedAlign = localStorage.getItem('lyrics-text-align');
     if (savedAlign === 'left' || savedAlign === 'center' || savedAlign === 'right') {
       setTextAlign(savedAlign);
     }
+
+    // Load display settings
+    const savedFont = localStorage.getItem('display-font-family');
+    const savedSpacing = localStorage.getItem('display-line-spacing');
+    const savedParagraphSpacing = localStorage.getItem('display-paragraph-spacing');
+    if (savedFont) setFontFamily(savedFont);
+    if (savedSpacing) setLineSpacing(parseFloat(savedSpacing));
+    if (savedParagraphSpacing) setParagraphSpacing(parseFloat(savedParagraphSpacing));
   }, []);
   
   // Listen for alignment changes from main page
@@ -103,6 +115,28 @@ export default function Display() {
         e.preventDefault();
         setZoomLevel(1.0);
       }
+
+      // Splitter controls
+      if (e.key === ']') {
+        e.preventDefault();
+        splitLyricsRef.current?.addSplit();
+      }
+      if (e.key === '[') {
+        e.preventDefault();
+        splitLyricsRef.current?.removeSplit();
+      }
+
+      // Fullscreen toggle
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(err => {
+            console.error(`Error attempting to enable fullscreen: ${err.message}`);
+          });
+        } else {
+          document.exitFullscreen();
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -124,6 +158,17 @@ export default function Display() {
       }
       if (data?.type === 'zoom' && typeof data.zoomLevel === 'number') {
         setZoomLevel(data.zoomLevel);
+      }
+      if (data?.type === 'addSplit') {
+        splitLyricsRef.current?.addSplit();
+      }
+      if (data?.type === 'removeSplit') {
+        splitLyricsRef.current?.removeSplit();
+      }
+      if (data?.type === 'displaySettings') {
+        if (data.fontFamily) setFontFamily(data.fontFamily);
+        if (typeof data.lineSpacing === 'number') setLineSpacing(data.lineSpacing);
+        if (typeof data.paragraphSpacing === 'number') setParagraphSpacing(data.paragraphSpacing);
       }
     };
     return () => channel.close();
@@ -168,25 +213,17 @@ export default function Display() {
         </div>
       </div>
 
-      {/* Keyboard Shortcuts Hint */}
-      <div 
-        className={`
-          absolute bottom-4 right-4 z-50 
-          bg-gray-900/80 backdrop-blur-sm text-gray-400 text-xs px-3 py-2 rounded-lg
-          transition-opacity duration-300
-          ${showControls ? 'opacity-100' : 'opacity-0'}
-        `}
-      >
-        <span className="text-cyan-400">+/-</span> Zoom • 
-        <span className="text-gray-400">0</span> Reset
-      </div>
-
       {/* Main Content - Always use SplitLyricsView which supports 1+ panes */}
       {song ? (
-        <SplitLyricsView 
-          lyrics={song.lyrics || song.music_ministry_lyrics || song.content || song.display_lyrics || ''} 
-          zoomLevel={zoomLevel} 
-          textAlign={textAlign} 
+        <SplitLyricsView
+          ref={splitLyricsRef}
+          lyrics={song.lyrics || song.music_ministry_lyrics || song.content || song.display_lyrics || ''}
+          zoomLevel={zoomLevel}
+          textAlign={textAlign}
+          fontFamily={fontFamily}
+          lineSpacing={lineSpacing}
+          paragraphSpacing={paragraphSpacing}
+          showSplitterControls={showControls}
         />
       ) : (
         <div className="h-full w-full flex items-center justify-center">

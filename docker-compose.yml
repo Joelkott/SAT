@@ -26,16 +26,10 @@ services:
       dockerfile: Dockerfile
     container_name: teleprompter-backend
     restart: unless-stopped
-    # depends_on:
-    #   postgres:
-    #     condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
-      # Connect to host database (existing database with your data)
-      DATABASE_URL: postgres://${POSTGRES_USER:-teleprompter_user}:${POSTGRES_PASSWORD:-teleprompter_pass_2024}@host.docker.internal:5432/${POSTGRES_DB:-teleprompter}?sslmode=disable
-      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY}
-      TYPESENSE_HOST: ${TYPESENSE_HOST}
+      # Connect to Railway database
+      DATABASE_URL: ${DATABASE_URL}
+      DISABLE_TYPESENSE: ${DISABLE_TYPESENSE:-true}
       PORT: 8080
       BACKUP_DIR: /app/backups
       # ProPresenter Integration (requires Tailscale)

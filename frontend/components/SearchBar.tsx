@@ -1,9 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 
 interface SearchBarProps {
   onSearch: (query: string, languages: string[]) => void;
+}
+
+export interface SearchBarRef {
+  focus: () => void;
 }
 
 const LANGUAGES = [
@@ -12,9 +16,18 @@ const LANGUAGES = [
   { code: 'hindi', label: 'Hindi' },
 ];
 
-export default function SearchBar({ onSearch }: SearchBarProps) {
+const SearchBar = forwardRef<SearchBarRef, SearchBarProps>(function SearchBarComponent({ onSearch }, ref) {
   const [query, setQuery] = useState('');
   const [languages, setLanguages] = useState<string[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Expose focus method to parent
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }), []);
 
   // Debounced search
   useEffect(() => {
@@ -35,6 +48,7 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
     <div className="space-y-3">
       <div className="relative">
         <input
+          ref={inputRef}
           type="text"
           placeholder="Search by title, artist, or lyrics..."
           value={query}
@@ -76,4 +90,8 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
       )}
     </div>
   );
-}
+});
+
+SearchBar.displayName = 'SearchBar';
+
+export default SearchBar;

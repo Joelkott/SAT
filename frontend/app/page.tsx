@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { songsApi, Song, SearchResult, propresenterApi, ProPresenterStatus } from '@/lib/api';
-import SearchBar from '@/components/SearchBar';
+import SearchBar, { SearchBarRef } from '@/components/SearchBar';
 import SongList from '@/components/SongList';
 import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
@@ -36,7 +36,14 @@ export default function Home() {
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const leftWidthRef = useRef(0.6);
   const rafIdRef = useRef<number | null>(null);
-  
+  const [isEditingInline, setIsEditingInline] = useState(false);
+  const [editedTitle, setEditedTitle] = useState('');
+  const [editedArtist, setEditedArtist] = useState('');
+  const [editedLanguage, setEditedLanguage] = useState('');
+  const [editedLyrics, setEditedLyrics] = useState('');
+  const [inlineSaveLoading, setInlineSaveLoading] = useState(false);
+  const searchBarRef = useRef<SearchBarRef>(null);
+
   // Load alignment preference from localStorage
   useEffect(() => {
     const savedAlign = localStorage.getItem('lyrics-text-align');
@@ -65,6 +72,18 @@ export default function Home() {
   useEffect(() => {
     loadSongs();
     checkProPresenterStatus();
+  }, []);
+
+  // Ctrl+F keyboard shortcut for search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'f') {
+        e.preventDefault();
+        searchBarRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Check ProPresenter connection status
@@ -379,6 +398,187 @@ export default function Home() {
     setEditingSong(null);
   };
 
+  const handleStartInlineEdit = (song: Song) => {
+    setEditedTitle(song.title);
+    setEditedArtist(song.artist || '');
+    setEditedLanguage(song.language);
+    setEditedLyrics(song.music_ministry_lyrics);
+    setIsEditingInline(true);
+  };
+
+  const handleCancelInlineEdit = () => {
+    setIsEditingInline(false);
+    setEditedTitle('');
+    setEditedArtist('');
+    setEditedLanguage('');
+    setEditedLyrics('');
+  };
+
+  const handleSaveInlineEdit = async () => {
+    if (!selectedSong) return;
+
+    try {
+      setInlineSaveLoading(true);
+      const updates = {
+        title: editedTitle.trim(),
+        artist: editedArtist.trim() || '',
+        language: editedLanguage,
+        music_ministry_lyrics: editedLyrics.trim(),
+        display_lyrics: editedLyrics.trim(), // Use same for both
+        library: selectedSong.library,
+      };
+
+      const updatedSong = await songsApi.update(selectedSong.id, updates);
+
+      // Update local state
+      setSongs(prevSongs =>
+        prevSongs.map(song => song.id === updatedSong.id ? updatedSong : song)
+      );
+
+      if (searchResults) {
+        setSearchResults(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            songs: prev.songs.map(song => song.id === updatedSong.id ? updatedSong : song)
+          };
+        });
+      }
+
+      setSelectedSong(updatedSong);
+
+      // If this was the live song, update it
+      if (liveSong?.id === updatedSong.id) {
+        handleSendToLive(updatedSong);
+      }
+
+      setIsEditingInline(false);
+    } catch (error) {
+      console.error('Error saving song:', error);
+      alert('Failed to save changes');
+    } finally {
+      setInlineSaveLoading(false);
+    }
+  };
+
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const textarea = e.currentTarget;
+
+    // Allow default browser undo/redo
+    if (e.ctrlKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')) {
+      return; // Let browser handle undo/redo
+    }
+
+    // Handle Tab key
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const value = textarea.value;
+
+      if (e.shiftKey) {
+        // Shift+Tab: Unindent
+        const lines = value.substring(0, start).split('\n');
+        const currentLineStart = start - lines[lines.length - 1].length;
+        const currentLine = value.substring(currentLineStart, value.indexOf('\n', start) === -1 ? value.length : value.indexOf('\n', start));
+
+        if (currentLine.startsWith('  ')) {
+          const newValue = value.substring(0, currentLineStart) + currentLine.substring(2) + value.substring(currentLineStart + currentLine.length);
+          setEditedLyrics(newValue);
+          setTimeout(() => {
+            textarea.selectionStart = textarea.selectionEnd = start - 2;
+          }, 0);
+        }
+      } else {
+        // Tab: Insert 2 spaces
+        const newValue = value.substring(0, start) + '  ' + value.substring(end);
+        setEditedLyrics(newValue);
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + 2;
+        }, 0);
+      }
+    }
+
+    // Handle Ctrl+] for indent
+    if (e.ctrlKey && e.key === ']') {
+      e.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const value = textarea.value;
+
+      if (start === end) {
+        // No selection, indent current line
+        const lines = value.substring(0, start).split('\n');
+        const currentLineStart = start - lines[lines.length - 1].length;
+        const beforeLine = value.substring(0, currentLineStart);
+        const afterCursor = value.substring(start);
+
+        const newValue = beforeLine + '  ' + value.substring(currentLineStart, start) + afterCursor;
+        setEditedLyrics(newValue);
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + 2;
+        }, 0);
+      } else {
+        // Selection exists, indent all selected lines
+        const beforeSelection = value.substring(0, start);
+        const selection = value.substring(start, end);
+        const afterSelection = value.substring(end);
+
+        const lines = selection.split('\n');
+        const indentedLines = lines.map(line => '  ' + line);
+        const newSelection = indentedLines.join('\n');
+
+        const newValue = beforeSelection + newSelection + afterSelection;
+        setEditedLyrics(newValue);
+        setTimeout(() => {
+          textarea.selectionStart = start;
+          textarea.selectionEnd = start + newSelection.length;
+        }, 0);
+      }
+    }
+
+    // Handle Ctrl+[ for unindent
+    if (e.ctrlKey && e.key === '[') {
+      e.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const value = textarea.value;
+
+      if (start === end) {
+        // No selection, unindent current line
+        const lines = value.substring(0, start).split('\n');
+        const currentLineStart = start - lines[lines.length - 1].length;
+        const lineEnd = value.indexOf('\n', start);
+        const currentLine = value.substring(currentLineStart, lineEnd === -1 ? value.length : lineEnd);
+
+        if (currentLine.startsWith('  ')) {
+          const newLine = currentLine.substring(2);
+          const newValue = value.substring(0, currentLineStart) + newLine + value.substring(currentLineStart + currentLine.length);
+          setEditedLyrics(newValue);
+          setTimeout(() => {
+            textarea.selectionStart = textarea.selectionEnd = Math.max(currentLineStart, start - 2);
+          }, 0);
+        }
+      } else {
+        // Selection exists, unindent all selected lines
+        const beforeSelection = value.substring(0, start);
+        const selection = value.substring(start, end);
+        const afterSelection = value.substring(end);
+
+        const lines = selection.split('\n');
+        const unindentedLines = lines.map(line => line.startsWith('  ') ? line.substring(2) : line);
+        const newSelection = unindentedLines.join('\n');
+
+        const newValue = beforeSelection + newSelection + afterSelection;
+        setEditedLyrics(newValue);
+        setTimeout(() => {
+          textarea.selectionStart = start;
+          textarea.selectionEnd = start + newSelection.length;
+        }, 0);
+      }
+    }
+  };
+
   const reorderByLanguageClient = (items: Song[], langs: string[]) => {
     if (!langs.length) return items;
     const prefs = langs.map((l) => l.trim().toLowerCase()).filter(Boolean);
@@ -503,351 +703,338 @@ export default function Home() {
       )}
 
       <div className="min-h-screen bg-[#111214] text-gray-100">
-        <div className="max-w-7xl mx-auto px-6 py-6 space-y-5">
-          <div className="flex items-start gap-3">
-            <div className="flex-1">
-              <SearchBar onSearch={handleSearch} />
+        {/* Top Bar */}
+        <div className="bg-[#1a1b1f] border-b border-[#2a2c31] px-6 py-3">
+          <div className="max-w-full mx-auto flex items-center justify-between gap-4">
+            {/* Left: Live Status */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  if (liveSong) {
+                    setSelectedSong(liveSong);
+                    setPreviewSong(null);
+                    setIsEditingInline(false);
+                  }
+                }}
+                className={`flex items-center gap-2 bg-[#141518] px-3 py-2 rounded-lg border border-[#2a2c31] transition-colors ${
+                  liveSong ? 'hover:border-[#3a3c42] cursor-pointer' : 'cursor-default'
+                }`}
+                disabled={!liveSong}
+              >
+                <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></div>
+                <span className="text-sm font-medium">
+                  {liveSong ? liveSong.title : 'No song live'}
+                </span>
+              </button>
+              <button
+                onClick={() => window.open('/display', '_blank', 'noopener,noreferrer')}
+                className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+              >
+                Launch Display
+              </button>
             </div>
-            <button
-              onClick={() => setShowSettings(true)}
-              aria-label="Settings"
-              className="shrink-0 h-10 w-10 flex items-center justify-center rounded-md bg-[#1a1b1f] border border-[#2a2c31] text-gray-100 hover:border-[#3a3c42] transition-colors"
-              title="Settings"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
-            <button
-              onClick={handleCreateNew}
-              aria-label="Add new song"
-              className="shrink-0 h-10 w-10 flex items-center justify-center rounded-md bg-[#1a1b1f] border border-[#2a2c31] text-gray-100 hover:border-[#3a3c42] transition-colors text-xl leading-none"
-            >
-              ＋
-            </button>
+
+            {/* Center: Display Controls */}
+            <div className="flex items-center gap-2">
+              {/* Text Alignment Controls */}
+              <div className="flex items-center gap-1 bg-[#141518] px-2 py-1 rounded-md border border-[#2a2c31]">
+                <button
+                  onClick={() => {
+                    setTextAlign('left');
+                    localStorage.setItem('lyrics-text-align', 'left');
+                    displayChannelRef.current?.postMessage({
+                      type: 'alignment',
+                      textAlign: 'left',
+                    });
+                  }}
+                  className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
+                    textAlign === 'left' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#2a2c31]'
+                  }`}
+                  title="Align Left"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h14" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setTextAlign('center');
+                    localStorage.setItem('lyrics-text-align', 'center');
+                    displayChannelRef.current?.postMessage({
+                      type: 'alignment',
+                      textAlign: 'center',
+                    });
+                  }}
+                  className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
+                    textAlign === 'center' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#2a2c31]'
+                  }`}
+                  title="Align Center"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M7 12h10M5 18h14" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setTextAlign('right');
+                    localStorage.setItem('lyrics-text-align', 'right');
+                    displayChannelRef.current?.postMessage({
+                      type: 'alignment',
+                      textAlign: 'right',
+                    });
+                  }}
+                  className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
+                    textAlign === 'right' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#2a2c31]'
+                  }`}
+                  title="Align Right"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M10 12h10M6 18h14" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Zoom Controls */}
+              <div className="flex items-center gap-1.5 bg-[#141518] px-2 py-1 rounded-md border border-[#2a2c31]">
+                <button
+                  onClick={() => {
+                    const newZoom = Math.max(0.3, zoomLevel - 0.1);
+                    setZoomLevel(newZoom);
+                    displayChannelRef.current?.postMessage({
+                      type: 'zoom',
+                      zoomLevel: newZoom,
+                    });
+                  }}
+                  className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-[#2a2c31] transition-colors text-base font-bold"
+                  aria-label="Zoom out"
+                >
+                  −
+                </button>
+                <span className="text-xs text-gray-400 min-w-[2.5rem] text-center">
+                  {Math.round(zoomLevel * 100)}%
+                </span>
+                <button
+                  onClick={() => {
+                    const newZoom = Math.min(10.0, zoomLevel + 0.1);
+                    setZoomLevel(newZoom);
+                    displayChannelRef.current?.postMessage({
+                      type: 'zoom',
+                      zoomLevel: newZoom,
+                    });
+                  }}
+                  className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-[#2a2c31] transition-colors text-base font-bold"
+                  aria-label="Zoom in"
+                >
+                  +
+                </button>
+              </div>
+
+              {/* Split Controls */}
+              <div className="flex items-center gap-1.5 bg-[#141518] px-2 py-1 rounded-md border border-[#2a2c31]">
+                <button
+                  onClick={() => {
+                    displayChannelRef.current?.postMessage({
+                      type: 'addSplit',
+                    });
+                  }}
+                  className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-[#2a2c31] transition-colors"
+                  aria-label="Add split"
+                  title="Add split (])"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    displayChannelRef.current?.postMessage({
+                      type: 'removeSplit',
+                    });
+                  }}
+                  className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-[#2a2c31] transition-colors"
+                  aria-label="Remove split"
+                  title="Remove split ([)"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Right: Action Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowSettings(true)}
+                className="h-9 w-9 flex items-center justify-center rounded-md bg-[#141518] border border-[#2a2c31] hover:border-[#3a3c42] transition-colors"
+                title="Settings"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+              <button
+                onClick={handleCreateNew}
+                className="h-9 px-4 flex items-center justify-center rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+              >
+                <span className="mr-1.5">+</span> New Song
+              </button>
+            </div>
           </div>
+        </div>
 
-          {isSearching && searchResults && (
-            <div className="bg-[#1a1b1f] rounded-xl border border-[#2a2c31] p-3">
-              <p className="text-sm text-gray-300">
-                Found {searchResults.total_found} results in {searchResults.search_time_ms}ms
-              </p>
+        <div className="max-w-full mx-auto px-6 py-5">
+          {/* 50/50 Split Layout */}
+          <div className="flex gap-4" style={{ height: 'calc(100vh - 140px)' }}>
+            {/* Left Half - Search Bar, Filters, and Song List */}
+            <div className="w-1/2 flex flex-col gap-4">
+              {/* Search Bar */}
+              <div className="flex-shrink-0">
+                <SearchBar ref={searchBarRef} onSearch={handleSearch} />
+              </div>
+
+              {/* Search Results Info */}
+              {isSearching && searchResults && (
+                <div className="bg-[#1a1b1f] rounded-lg border border-[#2a2c31] p-2 flex-shrink-0">
+                  <p className="text-xs text-gray-400">
+                    Found {searchResults.total_found} results in {searchResults.search_time_ms}ms
+                  </p>
+                </div>
+              )}
+
+              {/* Song List */}
+              <div className="flex-1 overflow-hidden">
+                <SongList
+                  songs={displaySongs}
+                  onSelectSong={(song) => {
+                    setSelectedSong(song);
+                    setPreviewSong(null);
+                  }}
+                  onSendToLive={handleSendToLive}
+                  selectedSongId={selectedSong?.id}
+                  loading={loading}
+                />
+              </div>
             </div>
-          )}
 
-          <div
-            ref={splitContainerRef}
-            className="flex w-full gap-4"
-            style={{ minHeight: '60vh' }}
-          >
-            {/* Left - Search results */}
-            <div
-              className="space-y-3"
-              style={{ flexBasis: `${leftWidth * 100}%`, minWidth: '35%' }}
-            >
-              <SongList
-                songs={displaySongs}
-                onSelectSong={handleSelectSong}
-                onEdit={handleEdit}
-                onSendToLive={handleSendToLive}
-                selectedSongId={selectedSong?.id}
-                loading={loading}
-              />
-            </div>
-
-            {/* Splitter */}
-            <div
-              className="w-2 sm:w-3 bg-[#2a2c31] hover:bg-[#3a3c42] rounded border border-[#2a2c31] cursor-col-resize select-none"
-              style={{ minHeight: '100%', cursor: 'col-resize' }}
-              onMouseDown={() => {
-                setIsDragging(true);
-                document.body.style.cursor = 'col-resize';
-                document.body.style.userSelect = 'none';
-              }}
-            ></div>
-
-            {/* Right - Live, Queue & Preview */}
-            <div
-              className="space-y-4"
-              style={{ flexBasis: `${(1 - leftWidth) * 100}%`, minWidth: '25%' }}
-            >
-              {/* Live Song Tile */}
-              <div className="bg-[#1a1b1f] rounded-xl border border-[#2a2c31] p-4 space-y-3">
-                <div className="text-xs font-semibold text-gray-400 uppercase">Live</div>
-                <div className="bg-[#141518] rounded-lg p-3 flex items-center gap-3 border border-[#2a2c31]">
-                  <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
-                  <div className="flex-1">
-                    <div className="text-gray-100 font-semibold">
-                      {liveSong ? liveSong.title : 'No song live'}
-                    </div>
-                    {liveSong?.artist && (
-                      <div className="text-sm text-gray-400">
-                        {liveSong.artist}
+            {/* Right Half - File Preview */}
+            <div className="w-1/2 bg-[#1a1b1f] rounded-xl border border-[#2a2c31] flex flex-col overflow-hidden">
+              {selectedSong ? (
+                <>
+                  {/* Header with song info and actions */}
+                  <div className="flex-shrink-0 border-b border-[#2a2c31] p-4">
+                    <div className="flex items-start justify-between gap-4 mb-3">
+                      <div className="flex-1">
+                        {isEditingInline ? (
+                          <>
+                            <input
+                              type="text"
+                              value={editedTitle}
+                              onChange={(e) => setEditedTitle(e.target.value)}
+                              className="w-full text-xl font-bold text-white mb-2 bg-[#141518] border border-[#2a2c31] rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                              placeholder="Song title"
+                            />
+                            <input
+                              type="text"
+                              value={editedArtist}
+                              onChange={(e) => setEditedArtist(e.target.value)}
+                              className="w-full text-gray-400 text-sm mb-2 bg-[#141518] border border-[#2a2c31] rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                              placeholder="Artist (optional)"
+                            />
+                            <select
+                              value={editedLanguage}
+                              onChange={(e) => setEditedLanguage(e.target.value)}
+                              className="bg-blue-600 text-white text-xs font-semibold px-2.5 py-0.5 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            >
+                              <option value="english">English</option>
+                              <option value="malayalam">Malayalam</option>
+                              <option value="hindi">Hindi</option>
+                              <option value="tamil">Tamil</option>
+                              <option value="telugu">Telugu</option>
+                              <option value="kannada">Kannada</option>
+                            </select>
+                          </>
+                        ) : (
+                          <>
+                            <h2 className="text-xl font-bold text-white mb-1">{selectedSong.title}</h2>
+                            {selectedSong.artist && (
+                              <p className="text-gray-400 text-sm mb-2">{selectedSong.artist}</p>
+                            )}
+                            <span className="inline-block bg-blue-600 text-white text-xs font-semibold px-2.5 py-0.5 rounded-full">
+                              {selectedSong.language}
+                            </span>
+                          </>
+                        )}
                       </div>
+                      <div className="flex gap-2">
+                        {isEditingInline ? (
+                          <>
+                            <button
+                              onClick={handleSaveInlineEdit}
+                              disabled={inlineSaveLoading}
+                              className="px-3 py-2 rounded-md bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white text-sm font-medium transition-colors"
+                            >
+                              {inlineSaveLoading ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              onClick={handleCancelInlineEdit}
+                              disabled={inlineSaveLoading}
+                              className="px-3 py-2 rounded-md bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 text-white text-sm font-medium transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleStartInlineEdit(selectedSong)}
+                              className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleSendToLive(selectedSong)}
+                              className="px-3 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors"
+                            >
+                              Send to Live
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lyrics Content - Scrollable */}
+                  <div className="flex-1 overflow-y-auto bg-[#141518] p-6">
+                    {isEditingInline ? (
+                      <textarea
+                        value={editedLyrics}
+                        onChange={(e) => setEditedLyrics(e.target.value)}
+                        onKeyDown={handleTextareaKeyDown}
+                        className="w-full h-full min-h-[400px] bg-[#1a1b1f] border border-[#2a2c31] rounded-lg p-4 text-base leading-relaxed text-gray-200 font-sans focus:outline-none focus:border-blue-500 resize-none"
+                        placeholder="Enter lyrics..."
+                      />
+                    ) : (
+                      <pre className="whitespace-pre-wrap font-sans text-base leading-relaxed text-gray-200">
+                        {selectedSong.music_ministry_lyrics}
+                      </pre>
                     )}
                   </div>
-                  <button
-                    onClick={() => {
-                      window.open('/display', '_blank', 'noopener,noreferrer');
-                    }}
-                    className="px-3 py-2 rounded-md border border-[#3a3c42] text-gray-200 hover:border-gray-100 transition-colors text-sm"
-                  >
-                    Launch Live
-                  </button>
-                </div>
-              </div>
-
-              {/* ProPresenter Integration */}
-              <div className="bg-[#1a1b1f] rounded-xl border border-[#2a2c31] p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs font-semibold text-gray-400 uppercase">ProPresenter</div>
-                  <button
-                    onClick={() => checkProPresenterStatus()}
-                    className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                    title="Refresh status"
-                  >
-                    ↻
-                  </button>
-                </div>
-                <div className="bg-[#141518] rounded-lg p-3 flex items-center gap-3 border border-[#2a2c31]">
-                  <div className={`w-3 h-3 rounded-full ${
-                    ppStatus?.connected 
-                      ? 'bg-green-500' 
-                      : ppStatus?.enabled 
-                        ? 'bg-yellow-500' 
-                        : 'bg-gray-500'
-                  }`}></div>
-                  <div className="flex-1">
-                    <div className="text-gray-100 text-sm font-medium">
-                      {ppStatus?.connected 
-                        ? 'Connected' 
-                        : ppStatus?.enabled 
-                          ? 'Disconnected' 
-                          : 'Not Configured'}
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#141518] flex items-center justify-center">
+                      <svg className="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                      </svg>
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {ppSyncing 
-                      ? 'Syncing...' 
-                      : ppStatus?.connected 
-                        ? 'Auto-sync enabled' 
-                        : ppStatus?.enabled 
-                          ? `Not connected: ${ppStatus.message || 'Unknown'}` 
-                          : 'Auto-sync disabled'}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const newState = !ppSyncEnabled;
-                      setPpSyncEnabled(newState);
-                      localStorage.setItem('pp-sync-enabled', String(newState));
-                    }}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      ppSyncEnabled 
-                        ? 'bg-green-600/20 text-green-400 border border-green-600/30 hover:bg-green-600/30' 
-                        : 'bg-gray-700 text-gray-400 border border-gray-600 hover:bg-gray-600'
-                    }`}
-                    disabled={!ppStatus?.connected}
-                    title={ppSyncEnabled ? 'Click to disable auto-sync' : 'Click to enable auto-sync'}
-                  >
-                    {ppSyncEnabled ? 'Sync On' : 'Sync Off'}
-                  </button>
-                </div>
-                {ppStatus?.connected && (
-                  <div className="bg-[#141518] rounded-lg p-3 border border-[#2a2c31] space-y-3">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-2">Playlist Name</label>
-                      <input
-                        type="text"
-                        value={ppPlaylistName}
-                        onChange={(e) => {
-                          setPpPlaylistName(e.target.value);
-                          localStorage.setItem('pp-playlist-name', e.target.value);
-                        }}
-                        className="w-full bg-[#1a1b1f] border border-[#2a2c31] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
-                        placeholder="Live Queue"
-                        disabled={!ppSyncEnabled}
-                      />
-                      <div className="text-xs text-gray-600 mt-1">
-                        Songs auto-added to this playlist
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-2">Theme Name (Optional)</label>
-                      <input
-                        type="text"
-                        value={ppThemeName}
-                        onChange={(e) => {
-                          setPpThemeName(e.target.value);
-                          localStorage.setItem('pp-theme-name', e.target.value);
-                        }}
-                        className="w-full bg-[#1a1b1f] border border-[#2a2c31] rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
-                        placeholder="Leave empty for default"
-                        disabled={!ppSyncEnabled}
-                      />
-                      <div className="text-xs text-gray-600 mt-1">
-                        Theme applied to songs in ProPresenter
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Queue & Preview */}
-              <div className="bg-[#1a1b1f] rounded-xl border border-[#2a2c31] p-4 space-y-3">
-                <div className="bg-[#141518] rounded-lg p-3 flex items-center gap-3 border border-[#2a2c31]">
-                  <div className="w-12 h-12 rounded bg-[#1f2024] flex items-center justify-center text-gray-300">
-                    🎵
-                  </div>
-                  <div className="flex-1 text-gray-300 text-sm font-semibold">
-                    Preview
-                  </div>
-                  {selectedSong && (
-                    <div className="flex items-center gap-2">
-                      {/* Text Alignment Controls */}
-                      <div className="flex items-center gap-1 bg-[#1a1b1f] px-2 py-1 rounded-md border border-[#2a2c31]">
-                        <button
-                          onClick={() => {
-                            setTextAlign('left');
-                            localStorage.setItem('lyrics-text-align', 'left');
-                            displayChannelRef.current?.postMessage({
-                              type: 'alignment',
-                              textAlign: 'left',
-                            });
-                          }}
-                          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
-                            textAlign === 'left' ? 'bg-blue-600 text-white border border-blue-500' : 'border border-[#3a3c42] bg-[#1a1b1f] text-white hover:border-gray-100 hover:bg-[#2a2c31]'
-                          }`}
-                          title="Align Left"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h14" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setTextAlign('center');
-                            localStorage.setItem('lyrics-text-align', 'center');
-                            displayChannelRef.current?.postMessage({
-                              type: 'alignment',
-                              textAlign: 'center',
-                            });
-                          }}
-                          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
-                            textAlign === 'center' ? 'bg-blue-600 text-white border border-blue-500' : 'border border-[#3a3c42] bg-[#1a1b1f] text-white hover:border-gray-100 hover:bg-[#2a2c31]'
-                          }`}
-                          title="Align Center"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M7 12h10M5 18h14" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setTextAlign('right');
-                            localStorage.setItem('lyrics-text-align', 'right');
-                            displayChannelRef.current?.postMessage({
-                              type: 'alignment',
-                              textAlign: 'right',
-                            });
-                          }}
-                          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
-                            textAlign === 'right' ? 'bg-blue-600 text-white border border-blue-500' : 'border border-[#3a3c42] bg-[#1a1b1f] text-white hover:border-gray-100 hover:bg-[#2a2c31]'
-                          }`}
-                          title="Align Right"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M10 12h10M6 18h14" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      {/* Zoom Controls */}
-                      <div className="flex items-center gap-1.5 bg-[#1a1b1f] px-2 py-1 rounded-md border border-[#2a2c31]">
-                        <button
-                          onClick={() => {
-                            const newZoom = Math.max(0.3, zoomLevel - 0.1);
-                            setZoomLevel(newZoom);
-                            displayChannelRef.current?.postMessage({
-                              type: 'zoom',
-                              zoomLevel: newZoom,
-                            });
-                          }}
-                          className="w-7 h-7 flex items-center justify-center rounded border border-[#3a3c42] bg-[#1a1b1f] text-white hover:border-gray-100 hover:bg-[#2a2c31] transition-colors text-base font-bold leading-none"
-                          aria-label="Zoom out"
-                        >
-                          −
-                        </button>
-                        <span className="text-xs text-gray-300 min-w-[2.5rem] text-center">
-                          {Math.round(zoomLevel * 100)}%
-                        </span>
-                        <button
-                          onClick={() => {
-                            const newZoom = Math.min(10.0, zoomLevel + 0.1);
-                            setZoomLevel(newZoom);
-                            displayChannelRef.current?.postMessage({
-                              type: 'zoom',
-                              zoomLevel: newZoom,
-                            });
-                          }}
-                          className="w-7 h-7 flex items-center justify-center rounded border border-[#3a3c42] bg-[#1a1b1f] text-white hover:border-gray-100 hover:bg-[#2a2c31] transition-colors text-base font-bold leading-none"
-                          aria-label="Zoom in"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-start justify-center overflow-hidden" style={{ minHeight: '150%' }}>
-                  <div className="bg-black rounded-lg border border-[#2a2c31] overflow-hidden flex flex-col aspect-video w-full" style={{ transform: 'scale(1.8)', transformOrigin: 'top center', maxWidth: '100%' }}>
-                  {selectedSong ? (
-                    <div
-                      id="preview-scroll-container"
-                      className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-12"
-                      onScroll={(e) => {
-                        if (!displayChannelRef.current) return;
-                        
-                        const target = e.currentTarget;
-                        const scrollTop = target.scrollTop;
-                        const scrollHeight = target.scrollHeight;
-                        const clientHeight = target.clientHeight;
-                        const maxScroll = scrollHeight - clientHeight;
-                        
-                        if (maxScroll > 0) {
-                          const scrollPercent = Math.max(0, Math.min(1, scrollTop / maxScroll));
-                          try {
-                            displayChannelRef.current.postMessage({
-                              type: 'scroll',
-                              scrollPercent: scrollPercent,
-                            });
-                          } catch (err) {
-                            console.error('Error sending scroll message:', err);
-                          }
-                        }
-                      }}
-                    >
-                      <div className="w-full max-w-4xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl mx-auto">
-                        <div className="flex items-center min-h-full py-8">
-                          <pre 
-                            className={`whitespace-pre-wrap text-${textAlign} w-full leading-relaxed text-white`}
-                            style={{ fontSize: `${0.875 * zoomLevel}rem` }}
-                          >
-                            {selectedSong.music_ministry_lyrics}
-                          </pre>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <p className="text-gray-500 text-center text-xs sm:text-sm">Select a song to preview lyrics</p>
-                    </div>
-                  )}
+                    <p className="text-gray-500 text-base">No song selected</p>
+                    <p className="text-gray-600 text-sm mt-2">Select a song from the list to preview</p>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

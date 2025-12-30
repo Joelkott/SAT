@@ -20,7 +20,7 @@ export default function SongList({ songs, onSelectSong, selectedSongId, loading,
     );
   }
 
-  if (songs.length === 0) {
+  if (!songs || songs.length === 0) {
     return (
       <div className="bg-[#1a1b1f] rounded-xl border border-[#2a2c31] p-6 text-center">
         <p className="text-gray-400">No songs found</p>

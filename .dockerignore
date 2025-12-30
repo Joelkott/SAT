@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Environment
+.env
+.env.*
+env.docker.example
+
+# Documentation
+*.md
+README.md
+
+# Backend specific
+backend/node_modules
+backend/.env
+backend/.env.*
+backend/backups
+backend/*.csv
+backend/*.log
+backend/*.sql
+
+# Frontend specific
+frontend/node_modules
+frontend/.next
+frontend/.env
+frontend/.env.*
+frontend/out
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+
