@@ -368,7 +368,7 @@ func (db *DB) GetQueue() ([]models.QueueItem, error) {
 	}
 	defer rows.Close()
 
-	var items []models.QueueItem
+	items := make([]models.QueueItem, 0)
 	for rows.Next() {
 		var item models.QueueItem
 		var song models.Song
