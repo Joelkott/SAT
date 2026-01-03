@@ -59,3 +59,26 @@ type UpdateSettingsRequest struct {
 	ProPresenterPlaylist     *string `json:"propresenter_playlist,omitempty"`
 	ProPresenterPlaylistUUID *string `json:"propresenter_playlist_uuid,omitempty"`
 }
+
+// Queue Models
+type QueueItem struct {
+	ID        int       `json:"id" db:"id"`
+	SongID    string    `json:"song_id" db:"song_id"`
+	Position  int       `json:"position" db:"position"`
+	Song      *Song     `json:"song,omitempty" db:"-"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type AddToQueueRequest struct {
+	SongID string `json:"song_id"`
+}
+
+type ReorderQueueRequest struct {
+	Items []QueueItemPosition `json:"items"`
+}
+
+type QueueItemPosition struct {
+	ID       int `json:"id"`
+	Position int `json:"position"`
+}

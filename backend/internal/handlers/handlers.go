@@ -694,3 +694,119 @@ func (h *Handler) UpdateSettings(c *fiber.Ctx) error {
 
 	return c.JSON(settings)
 }
+
+// ============ Queue Handlers ============
+
+// GetQueue returns all items in the queue
+func (h *Handler) GetQueue(c *fiber.Ctx) error {
+	items, err := h.db.GetQueue()
+	if err != nil {
+		log.Printf("Error getting queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to retrieve queue"})
+	}
+
+	return c.JSON(items)
+}
+
+// AddToQueue adds a song to the queue
+func (h *Handler) AddToQueue(c *fiber.Ctx) error {
+	var req models.AddToQueueRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.SongID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "song_id is required"})
+	}
+
+	// Verify song exists
+	_, err := h.db.GetSong(req.SongID)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Song not found"})
+	}
+
+	item, err := h.db.AddToQueue(req.SongID)
+	if err != nil {
+		if err.Error() == "song already in queue" {
+			return c.Status(409).JSON(fiber.Map{"error": "Song already in queue"})
+		}
+		log.Printf("Error adding to queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to add song to queue"})
+	}
+
+	return c.Status(201).JSON(item)
+}
+
+// RemoveFromQueue removes an item from the queue by queue item ID
+func (h *Handler) RemoveFromQueue(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	if idStr == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "ID is required"})
+	}
+
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid ID format"})
+	}
+
+	err := h.db.RemoveFromQueue(id)
+	if err != nil {
+		if err.Error() == "queue item not found" {
+			return c.Status(404).JSON(fiber.Map{"error": "Queue item not found"})
+		}
+		log.Printf("Error removing from queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to remove item from queue"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Item removed from queue successfully"})
+}
+
+// RemoveFromQueueBySong removes an item from the queue by song ID
+func (h *Handler) RemoveFromQueueBySong(c *fiber.Ctx) error {
+	songID := c.Params("song_id")
+	if songID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "song_id is required"})
+	}
+
+	err := h.db.RemoveFromQueueBySongID(songID)
+	if err != nil {
+		if err.Error() == "song not in queue" {
+			return c.Status(404).JSON(fiber.Map{"error": "Song not in queue"})
+		}
+		log.Printf("Error removing from queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to remove song from queue"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Song removed from queue successfully"})
+}
+
+// ReorderQueue updates the positions of queue items
+func (h *Handler) ReorderQueue(c *fiber.Ctx) error {
+	var req models.ReorderQueueRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if len(req.Items) == 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "items array is required"})
+	}
+
+	err := h.db.ReorderQueue(req.Items)
+	if err != nil {
+		log.Printf("Error reordering queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to reorder queue"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Queue reordered successfully"})
+}
+
+// ClearQueue removes all items from the queue
+func (h *Handler) ClearQueue(c *fiber.Ctx) error {
+	err := h.db.ClearQueue()
+	if err != nil {
+		log.Printf("Error clearing queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to clear queue"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Queue cleared successfully"})
+}

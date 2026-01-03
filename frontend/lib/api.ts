@@ -242,4 +242,60 @@ export const settingsApi = {
   },
 };
 
+// Queue Management
+export interface QueueItem {
+  id: number;
+  song_id: string;
+  position: number;
+  song?: Song;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AddToQueueRequest {
+  song_id: string;
+}
+
+export interface ReorderQueueRequest {
+  items: { id: number; position: number }[];
+}
+
+export const queueApi = {
+  // Get all queue items
+  getAll: async (): Promise<QueueItem[]> => {
+    const response = await api.get<QueueItem[]>('/queue');
+    return response.data;
+  },
+
+  // Add a song to the queue
+  add: async (songId: string): Promise<QueueItem> => {
+    const response = await api.post<QueueItem>('/queue', { song_id: songId });
+    return response.data;
+  },
+
+  // Remove an item from the queue by queue item ID
+  remove: async (id: number): Promise<{ message: string }> => {
+    const response = await api.delete<{ message: string }>(`/queue/${id}`);
+    return response.data;
+  },
+
+  // Remove an item from the queue by song ID
+  removeBySongId: async (songId: string): Promise<{ message: string }> => {
+    const response = await api.delete<{ message: string }>(`/queue/song/${songId}`);
+    return response.data;
+  },
+
+  // Reorder queue items
+  reorder: async (items: { id: number; position: number }[]): Promise<{ message: string }> => {
+    const response = await api.put<{ message: string }>('/queue/reorder', { items });
+    return response.data;
+  },
+
+  // Clear the entire queue
+  clear: async (): Promise<{ message: string }> => {
+    const response = await api.post<{ message: string }>('/queue/clear');
+    return response.data;
+  },
+};
+
 export default api;

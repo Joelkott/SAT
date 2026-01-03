@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { songsApi, Song, SearchResult, propresenterApi, ProPresenterStatus } from '@/lib/api';
+import { songsApi, Song, SearchResult, propresenterApi, ProPresenterStatus, queueApi, QueueItem } from '@/lib/api';
 import SearchBar, { SearchBarRef } from '@/components/SearchBar';
 import SongList from '@/components/SongList';
 import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
 import SettingsDialog from '@/components/SettingsDialog';
+import QueuePanel from '@/components/QueuePanel';
 
 export default function Home() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -43,6 +44,8 @@ export default function Home() {
   const [editedLyrics, setEditedLyrics] = useState('');
   const [inlineSaveLoading, setInlineSaveLoading] = useState(false);
   const searchBarRef = useRef<SearchBarRef>(null);
+  const [isQueueOpen, setIsQueueOpen] = useState(false);
+  const [queuedSongIds, setQueuedSongIds] = useState<Set<string>>(new Set());
 
   // Load alignment preference from localStorage
   useEffect(() => {
@@ -66,12 +69,6 @@ export default function Home() {
     if (savedSyncEnabled !== null) {
       setPpSyncEnabled(savedSyncEnabled === 'true');
     }
-  }, []);
-
-  // Load all songs on mount
-  useEffect(() => {
-    loadSongs();
-    checkProPresenterStatus();
   }, []);
 
   // Ctrl+F keyboard shortcut for search
@@ -116,6 +113,44 @@ export default function Home() {
       }
     }
   };
+
+  // Fetch queue and update queued song IDs
+  const fetchQueue = useCallback(async () => {
+    try {
+      const items = await queueApi.getAll();
+      const songIds = new Set(items.map((item) => item.song_id));
+      setQueuedSongIds(songIds);
+    } catch (err) {
+      console.error('Failed to fetch queue:', err);
+    }
+  }, []);
+
+  // Add song to queue
+  const handleAddToQueue = async (song: Song) => {
+    try {
+      await queueApi.add(song.id);
+      await fetchQueue();
+    } catch (err: any) {
+      console.error('Failed to add to queue:', err);
+      if (err?.response?.status === 409) {
+        alert('This song is already in the queue');
+      } else {
+        alert('Failed to add song to queue');
+      }
+    }
+  };
+
+  // Handle queue changes
+  const handleQueueChange = () => {
+    fetchQueue();
+  };
+
+  // Load all songs and queue on mount
+  useEffect(() => {
+    loadSongs();
+    checkProPresenterStatus();
+    fetchQueue();
+  }, [fetchQueue]);
 
   // Load splitter width from storage
   useEffect(() => {
@@ -704,10 +739,19 @@ export default function Home() {
 
       <div className="min-h-screen bg-[#111214] text-gray-100">
         {/* Top Bar */}
-        <div className="bg-[#1a1b1f] border-b border-[#2a2c31] px-6 py-3">
+        <div className="bg-[#1a1b1f] border-b border-[#2a2c31] px-6 py-3" style={{ marginLeft: isQueueOpen ? '300px' : '0', transition: 'margin-left 0.3s ease' }}>
           <div className="max-w-full mx-auto flex items-center justify-between gap-4">
-            {/* Left: Live Status */}
+            {/* Left: Queue Toggle + Live Status */}
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsQueueOpen(!isQueueOpen)}
+                className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-[#2a2c31] transition-colors"
+                title="Toggle Queue"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
               <button
                 onClick={() => {
                   if (liveSong) {
@@ -884,7 +928,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="max-w-full mx-auto px-6 py-5">
+        <div className="max-w-full mx-auto px-6 py-5" style={{ marginLeft: isQueueOpen ? '300px' : '0', transition: 'margin-left 0.3s ease' }}>
           {/* 50/50 Split Layout */}
           <div className="flex gap-4" style={{ height: 'calc(100vh - 140px)' }}>
             {/* Left Half - Search Bar, Filters, and Song List */}
@@ -912,6 +956,8 @@ export default function Home() {
                     setPreviewSong(null);
                   }}
                   onSendToLive={handleSendToLive}
+                  onAddToQueue={handleAddToQueue}
+                  queuedSongIds={queuedSongIds}
                   selectedSongId={selectedSong?.id}
                   loading={loading}
                 />
@@ -919,7 +965,7 @@ export default function Home() {
             </div>
 
             {/* Right Half - File Preview */}
-            <div className="w-1/2 bg-[#1a1b1f] rounded-xl border border-[#2a2c31] flex flex-col overflow-hidden">
+            <div className={`bg-[#1a1b1f] rounded-xl border border-[#2a2c31] flex flex-col overflow-hidden transition-all duration-300 ${isQueueOpen ? 'flex-1' : 'w-1/2'}`}>
               {selectedSong ? (
                 <>
                   {/* Header with song info and actions */}
@@ -1066,6 +1112,14 @@ export default function Home() {
           // Reload ProPresenter status after settings change
           checkProPresenterStatus();
         }}
+      />
+
+      {/* Queue Panel */}
+      <QueuePanel
+        isOpen={isQueueOpen}
+        onToggle={() => setIsQueueOpen(!isQueueOpen)}
+        onSongSelect={handleSendToLive}
+        onQueueChange={handleQueueChange}
       />
     </>
   );

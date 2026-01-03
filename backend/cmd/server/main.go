@@ -183,6 +183,14 @@ func main() {
 	// Search
 	api.Get("/search", h.SearchSongs)
 
+	// Queue management
+	api.Get("/queue", h.GetQueue)
+	api.Post("/queue", h.AddToQueue)
+	api.Delete("/queue/:id", h.RemoveFromQueue)
+	api.Delete("/queue/song/:song_id", h.RemoveFromQueueBySong)
+	api.Put("/queue/reorder", h.ReorderQueue)
+	api.Post("/queue/clear", h.ClearQueue)
+
 	// Admin
 	admin := api.Group("/admin")
 	admin.Post("/reindex", h.ReindexAll)
