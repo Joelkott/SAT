@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # Ollama for local Bible reference parsing
+  ollama:
+    image: ollama/ollama:latest
+    container_name: bible-parser-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - bible-parser-network
+    # GPU support (if available)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Ollama model loader - pulls the model on first run
+  ollama-loader:
+    image: curlimages/curl:latest
+    container_name: bible-parser-ollama-loader
+    networks:
+      - bible-parser-network
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling gemma2:2b model..."
+        curl -X POST http://ollama:11434/api/pull -d '{"name":"gemma2:2b"}'
+        echo ""
+        echo "Model ready!"
+    restart: "no"
+
+  # Bible Parser Client - connects to VPS and processes captions
+  bible-parser:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bible-parser-client
+    environment:
+      # VPS endpoints (CHANGE THESE TO YOUR VPS DOMAIN)
+      JGM_SSE_URL: ${JGM_SSE_URL:-https://your-vps-domain.com/api/audience-stream}
+      TELEPROMPTER_API_URL: ${TELEPROMPTER_API_URL:-https://your-vps-domain.com/api/bible-references}
+
+      # Local Ollama
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma2:2b}
+
+      # API Key for VPS authentication
+      API_KEY: ${API_KEY}
+    networks:
+      - bible-parser-network
+    depends_on:
+      ollama:
+        condition: service_healthy
+      ollama-loader:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+    driver: local
+
+networks:
+  bible-parser-network:
+    driver: bridge

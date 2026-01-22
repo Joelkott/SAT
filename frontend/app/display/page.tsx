@@ -23,8 +23,12 @@ export default function Display() {
   const [fontFamily, setFontFamily] = useState('system-ui');
   const [lineSpacing, setLineSpacing] = useState(1.5);
   const [paragraphSpacing, setParagraphSpacing] = useState(1.0);
+  const [isBibleMode, setIsBibleMode] = useState(false);
+  const [bibleReference, setBibleReference] = useState<string>('');
+  const [autoSizeFontSize, setAutoSizeFontSize] = useState<number>(48);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const splitLyricsRef = useRef<SplitLyricsViewRef>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Load alignment preference from localStorage
   useEffect(() => {
@@ -143,6 +147,48 @@ export default function Display() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Auto-size text in Bible mode to fit without scrolling
+  useEffect(() => {
+    if (!isBibleMode || !song || !contentRef.current) {
+      return;
+    }
+
+    const adjustFontSize = () => {
+      const container = contentRef.current;
+      if (!container) return;
+
+      const maxHeight = window.innerHeight - 120; // Reserve space for reference header and padding
+      let fontSize = 80; // Start large
+      const minFontSize = 16;
+
+      // Binary search for optimal font size
+      let low = minFontSize;
+      let high = fontSize;
+
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        container.style.fontSize = `${mid}px`;
+
+        if (container.scrollHeight <= maxHeight) {
+          fontSize = mid;
+          low = mid + 1;
+        } else {
+          high = mid - 1;
+        }
+      }
+
+      setAutoSizeFontSize(fontSize);
+      container.style.fontSize = `${fontSize}px`;
+    };
+
+    // Initial adjustment
+    setTimeout(adjustFontSize, 100);
+
+    // Adjust on window resize
+    window.addEventListener('resize', adjustFontSize);
+    return () => window.removeEventListener('resize', adjustFontSize);
+  }, [isBibleMode, song]);
+
   // Listen for broadcasts from the control window
   useEffect(() => {
     const channel = new BroadcastChannel('lyrics-display');
@@ -150,10 +196,29 @@ export default function Display() {
       const data = event.data;
       if (data?.type === 'song' && data.song) {
         setSong(data.song as DisplaySong);
+        setIsBibleMode(false);
+        setBibleReference('');
         localStorage.setItem('lyrics-display-current', JSON.stringify(data.song));
+      }
+      if (data?.type === 'bible' && data.bible) {
+        // Handle Bible content - convert to DisplaySong format
+        const bibleContent: DisplaySong = {
+          id: data.bible.id,
+          title: data.bible.title,
+          artist: data.bible.subtitle,
+          lyrics: data.bible.content,
+          content: data.bible.content,
+          language: data.bible.language || 'english',
+        };
+        setSong(bibleContent);
+        setIsBibleMode(true);
+        setBibleReference(data.bible.reference || '');
+        localStorage.setItem('lyrics-display-current', JSON.stringify(bibleContent));
       }
       if (data?.type === 'clear') {
         setSong(null);
+        setIsBibleMode(false);
+        setBibleReference('');
         localStorage.removeItem('lyrics-display-current');
       }
       if (data?.type === 'zoom' && typeof data.zoomLevel === 'number') {
@@ -213,18 +278,67 @@ export default function Display() {
         </div>
       </div>
 
-      {/* Main Content - Always use SplitLyricsView which supports 1+ panes */}
+      {/* Main Content */}
       {song ? (
-        <SplitLyricsView
-          ref={splitLyricsRef}
-          lyrics={song.lyrics || song.music_ministry_lyrics || song.content || song.display_lyrics || ''}
-          zoomLevel={zoomLevel}
-          textAlign={textAlign}
-          fontFamily={fontFamily}
-          lineSpacing={lineSpacing}
-          paragraphSpacing={paragraphSpacing}
-          showSplitterControls={showControls}
-        />
+        isBibleMode ? (
+          // Bible Mode - Auto-sized with reference header
+          <div className="h-full w-full flex flex-col items-center justify-center px-8 py-6">
+            {/* Bible Reference Header */}
+            {bibleReference && (
+              <div className="mb-6 text-center">
+                <h1 className="text-4xl font-bold text-gray-300">
+                  {bibleReference}
+                </h1>
+              </div>
+            )}
+
+            {/* Bible Content - Auto-sized */}
+            <div
+              ref={contentRef}
+              className="text-center leading-relaxed"
+              style={{
+                fontFamily: fontFamily,
+                textAlign: textAlign,
+                maxWidth: '90%',
+              }}
+            >
+              {(song.lyrics || song.content || '')
+                .split('\n')
+                .filter(line => {
+                  // Filter out lines that are just verse numbers (e.g., "9.", "10.", etc.)
+                  const trimmed = line.trim();
+                  return trimmed !== '' && !/^\d+\.$/.test(trimmed);
+                })
+                .map((line, idx) => {
+                  // Check if this is a separator line (---)
+                  if (line.trim() === '---') {
+                    return <div key={idx} className="my-6 border-t border-gray-600 w-full"></div>;
+                  }
+
+                  // Check if line starts with version tag like [KJV], [BSB], etc.
+                  const isVersionLine = /^\[[\w-]+\]/.test(line.trim());
+
+                  return (
+                    <p key={idx} className={isVersionLine ? "mb-4 mt-6" : "mb-2"}>
+                      {line || '\u00A0'}
+                    </p>
+                  );
+                })}
+            </div>
+          </div>
+        ) : (
+          // Song Mode - Use SplitLyricsView
+          <SplitLyricsView
+            ref={splitLyricsRef}
+            lyrics={song.lyrics || song.music_ministry_lyrics || song.content || song.display_lyrics || ''}
+            zoomLevel={zoomLevel}
+            textAlign={textAlign}
+            fontFamily={fontFamily}
+            lineSpacing={lineSpacing}
+            paragraphSpacing={paragraphSpacing}
+            showSplitterControls={showControls}
+          />
+        )
       ) : (
         <div className="h-full w-full flex items-center justify-center">
           <div className="text-center">

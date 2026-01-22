@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/joho/godotenv"
 	"github.com/yourusername/audience-stage-teleprompter/internal/backup"
+	"github.com/yourusername/audience-stage-teleprompter/internal/captionstream"
 	"github.com/yourusername/audience-stage-teleprompter/internal/database"
 	"github.com/yourusername/audience-stage-teleprompter/internal/handlers"
 	"github.com/yourusername/audience-stage-teleprompter/internal/propresenter"
@@ -151,6 +152,27 @@ func main() {
 	// Initialize handlers
 	h := handlers.New(db, ts, backupManager, ppClient, skipTypesense)
 
+	// Initialize caption stream client (optional - only if JGM_CAPTIONS_URL is set)
+	jgmCaptionsURL := os.Getenv("JGM_CAPTIONS_URL")
+	if jgmCaptionsURL != "" {
+		// Create caption handler that forwards to Bible parsing
+		captionHandler := func(text string, timestamp string) {
+			// Forward caption to the ReceiveCaption handler for Bible reference parsing
+			log.Printf("📖 Received caption from stream: %s", text)
+			h.ProcessCaptionText(text, timestamp)
+		}
+
+		// Create and start caption stream client
+		streamClient := captionstream.NewClient(jgmCaptionsURL+"/audience/stream", captionHandler)
+		if err := streamClient.Start(); err != nil {
+			log.Printf("⚠️  Failed to start caption stream client: %v", err)
+		} else {
+			log.Printf("✅ Caption stream client started: %s", jgmCaptionsURL)
+		}
+	} else {
+		log.Println("ℹ️  JGM_CAPTIONS_URL not set - caption stream disabled")
+	}
+
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
 		AppName:      "Audience Stage Teleprompter",
@@ -162,9 +184,18 @@ func main() {
 	app.Use(logger.New(logger.Config{
 		Format: "[${time}] ${status} - ${latency} ${method} ${path}\n",
 	}))
+	// CORS Configuration
+	// Allow both Vercel frontend and local development
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOrigins == "" {
+		// Default: allow all for development
+		allowedOrigins = "*"
+	}
+
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
-		AllowHeaders: "Origin, Content-Type, Accept",
+		AllowOrigins: allowedOrigins,
+		AllowHeaders: "Origin, Content-Type, Accept, X-API-Key",
+		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
 
 	// Routes
@@ -211,6 +242,13 @@ func main() {
 	pp.Post("/next", h.ProPresenterNextSlide)
 	pp.Post("/previous", h.ProPresenterPreviousSlide)
 	pp.Post("/clear", h.ProPresenterClear)
+
+	// Captions integration (from Jgm-live-captions)
+	api.Post("/caption", h.ReceiveCaption)
+	api.Get("/bible/sse", h.BibleSSE) // Server-Sent Events for Bible verses
+
+	// Bible references from remote parser (for VPS deployment)
+	api.Post("/bible-references", h.ReceiveParsedReferences)
 
 	// Start server
 	log.Printf("Server starting on port %s", port)

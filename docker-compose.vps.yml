@@ -1,5 +1,9 @@
 version: '3.8'
 
+# VPS Deployment Configuration
+# This docker-compose file is optimized for VPS deployment WITHOUT Ollama.
+# Bible reference parsing is handled by a remote machine via the bible-parser-client.
+
 services:
   # PostgreSQL Database
   postgres:
@@ -21,51 +25,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  # Ollama for SLM (Bible reference parsing)
-  ollama:
-    image: ollama/ollama:latest
-    container_name: teleprompter-ollama
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
-    networks:
-      - teleprompter-network
-    # GPU support enabled - RTX 4050
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    healthcheck:
-      test: ["CMD-SHELL", "ollama list || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  # Ollama model loader - pulls the model on first run
-  ollama-loader:
-    image: curlimages/curl:latest
-    container_name: teleprompter-ollama-loader
-    networks:
-      - teleprompter-network
-    depends_on:
-      ollama:
-        condition: service_healthy
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        echo "Pulling gemma2:2b model..."
-        curl -X POST http://ollama:11434/api/pull -d '{"name":"gemma2:2b"}'
-        echo ""
-        echo "Model ready!"
-    restart: "no"
-
-  # Backend API (Go)
+  # Backend API (Go) - NO Ollama processing
   backend:
     build:
       context: ./backend
@@ -78,10 +40,21 @@ services:
       DISABLE_TYPESENSE: ${DISABLE_TYPESENSE:-true}
       PORT: 8080
       BACKUP_DIR: /app/backups
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+
+      # CORS for Vercel frontends
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+
+      # Disable local caption processing (handled by remote parser)
+      ENABLE_CAPTION_PROCESSING: "false"
+
+      # API key for remote bible-parser-client authentication
+      BIBLE_PARSER_API_KEY: ${BIBLE_PARSER_API_KEY}
+
+      # Optional: Keep OpenAI as fallback (if API key is provided)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
-      OLLAMA_URL: http://ollama:11434
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma2:2b}
+
+      # JGM Captions integration
       JGM_CAPTIONS_URL: ${JGM_CAPTIONS_URL:-http://jgm-captions:8080}
     ports:
       - "8080:8080"
@@ -90,34 +63,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
-      ollama-loader:
-        condition: service_completed_successfully
       jgm-captions:
         condition: service_started
     networks:
       - teleprompter-network
     restart: unless-stopped
 
-  # Frontend (Next.js)
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: teleprompter-frontend
-    environment:
-      # For browser access, use localhost:8080
-      NEXT_PUBLIC_API_URL: http://localhost:8080
-    ports:
-      - "3001:3000"
-    depends_on:
-      - backend
-    networks:
-      - teleprompter-network
-    restart: unless-stopped
-
-  # Jgm Live Captions (WebSocket Server for STT)
+  # JGM Live Captions (Full Stack - Frontend + Backend)
+  # Keeping JGM deployment as-is, no changes to existing setup
   jgm-captions:
     build:
       context: ../Jgm-live-captions
@@ -126,7 +79,7 @@ services:
     environment:
       SONIOX_MASTER_API_KEY: ${SONIOX_API_KEY}
       PORT: 8080
-      TELEPROMPTER_URL: http://backend:8080/api/caption
+      # No TELEPROMPTER_URL needed - captions are consumed via SSE by remote parser
     ports:
       - "8081:8080"
     networks:
@@ -135,8 +88,6 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
-  ollama_data:
     driver: local
   backups_data:
     driver: local
