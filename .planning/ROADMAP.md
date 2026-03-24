@@ -28,11 +28,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User can type a reference like "John 3:16" and jump directly to that passage
   4. User can pick a Bible translation from a list of available translations
   5. Scripture text displays with verse numbers and a reference header (e.g., "John 3:16 (KJV)")
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Backend bible proxy (api.bible client, cache, handlers, routes)
+- [ ] 01-02-PLAN.md — Frontend API client, SongsPanel extraction, tab bar
+- [ ] 01-03-PLAN.md — Bible navigation UI (book list, chapter grid, verse display, reference search)
 
 ### Phase 2: Multi-Translation and Display Modes
 **Goal**: Worship leaders can compare translations side-by-side and control how scripture appears on screen
@@ -70,6 +71,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Bible Browsing Foundation | 0/? | Not started | - |
+| 1. Bible Browsing Foundation | 0/3 | Planned | - |
 | 2. Multi-Translation and Display Modes | 0/? | Not started | - |
 | 3. Live Service and Output Tab | 0/? | Not started | - |
