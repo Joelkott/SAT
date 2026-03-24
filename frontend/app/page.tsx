@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import SongsPanel from '@/components/SongsPanel';
+import BiblePanel from '@/components/bible/BiblePanel';
 
 type Tab = 'songs' | 'bible';
 
@@ -38,14 +39,7 @@ export default function Home() {
 
       {/* Tab Content */}
       {activeTab === 'songs' && <SongsPanel />}
-      {activeTab === 'bible' && (
-        <div className="px-6 py-6">
-          <div className="bg-[#1a1b1f] rounded-xl border border-[#2a2c31] p-4">
-            <h2 className="text-xl font-semibold text-gray-100 mb-2">Select a book to begin</h2>
-            <p className="text-sm text-gray-300">Choose a book from the list, or type a reference above to jump directly to a passage.</p>
-          </div>
-        </div>
-      )}
+      {activeTab === 'bible' && <BiblePanel />}
     </div>
   );
 }
