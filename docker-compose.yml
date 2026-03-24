@@ -42,6 +42,9 @@ services:
       PROPRESENTER_HOST: ${PROPRESENTER_HOST:-}
       PROPRESENTER_PORT: ${PROPRESENTER_PORT:-62683}
       PROPRESENTER_PLAYLIST: ${PROPRESENTER_PLAYLIST:-Live Queue}
+      # Bible API Integration
+      API_BIBLE_KEY: ${API_BIBLE_KEY:-}
+      API_BIBLE_BASE_URL: ${API_BIBLE_BASE_URL:-https://api.scripture.api.bible/v1}
     volumes:
       - backups_data:/app/backups
     ports:
@@ -60,6 +63,7 @@ services:
       - backend
     environment:
       API_URL: ${API_URL:-http://localhost:8080/api}
+      NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:8080/api}
     ports:
       - "3000:3000"
 

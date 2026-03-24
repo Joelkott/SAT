@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/joho/godotenv"
 	"github.com/yourusername/audience-stage-teleprompter/internal/backup"
+	"github.com/yourusername/audience-stage-teleprompter/internal/bible"
 	"github.com/yourusername/audience-stage-teleprompter/internal/database"
 	"github.com/yourusername/audience-stage-teleprompter/internal/handlers"
 	"github.com/yourusername/audience-stage-teleprompter/internal/propresenter"
@@ -97,6 +98,23 @@ func main() {
 		log.Println("ℹ️  ProPresenter integration disabled")
 	}
 
+	// Bible API configuration (optional)
+	bibleAPIKey := os.Getenv("API_BIBLE_KEY")
+	bibleBaseURL := os.Getenv("API_BIBLE_BASE_URL")
+
+	var bibleHandler *bible.BibleHandler
+	if bibleAPIKey != "" {
+		bibleConfig := &bible.Config{
+			APIKey:  bibleAPIKey,
+			BaseURL: bibleBaseURL,
+		}
+		bibleClient := bible.New(bibleConfig)
+		bibleHandler = bible.NewHandler(bibleClient)
+		log.Printf("Bible API integration enabled")
+	} else {
+		log.Println("Bible API integration disabled (no API_BIBLE_KEY)")
+	}
+
 	// Initialize handlers
 	h := handlers.New(db, ts, backupManager, ppClient, skipTypesense)
 
@@ -148,6 +166,17 @@ func main() {
 	pp.Post("/next", h.ProPresenterNextSlide)
 	pp.Post("/previous", h.ProPresenterPreviousSlide)
 	pp.Post("/clear", h.ProPresenterClear)
+
+	// Bible API routes
+	if bibleHandler != nil {
+		bibleGroup := api.Group("/bible")
+		bibleGroup.Get("/bibles", bibleHandler.GetBibles)
+		bibleGroup.Get("/bibles/:bibleId/books", bibleHandler.GetBooks)
+		bibleGroup.Get("/bibles/:bibleId/books/:bookId/chapters", bibleHandler.GetChapters)
+		bibleGroup.Get("/bibles/:bibleId/chapters/:chapterId", bibleHandler.GetChapter)
+		bibleGroup.Get("/bibles/:bibleId/verses/:verseId", bibleHandler.GetVerse)
+		bibleGroup.Get("/bibles/:bibleId/passages/:passageId", bibleHandler.GetPassage)
+	}
 
 	// Start server
 	log.Printf("Server starting on port %s", port)
