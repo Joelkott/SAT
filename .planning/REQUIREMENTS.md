@@ -7,9 +7,9 @@
 
 ### API Integration
 
-- [ ] **API-01**: Backend proxies all api.bible requests (API key never exposed to frontend)
-- [ ] **API-02**: Backend caches Bible metadata (translations, books, chapters) with 24h TTL
-- [ ] **API-03**: Backend caches verse/passage content with 1h TTL
+- [x] **API-01**: Backend proxies all api.bible requests (API key never exposed to frontend)
+- [x] **API-02**: Backend caches Bible metadata (translations, books, chapters) with 24h TTL
+- [x] **API-03**: Backend caches verse/passage content with 1h TTL
 - [ ] **API-04**: Frontend calls Go backend for all Bible data (bibleApi in api.ts)
 
 ### Navigation
@@ -80,9 +80,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| API-01 | Phase 1 | Pending |
-| API-02 | Phase 1 | Pending |
-| API-03 | Phase 1 | Pending |
+| API-01 | Phase 1 | Complete |
+| API-02 | Phase 1 | Complete |
+| API-03 | Phase 1 | Complete |
 | API-04 | Phase 1 | Pending |
 | NAV-01 | Phase 1 | Pending |
 | NAV-02 | Phase 1 | Pending |
