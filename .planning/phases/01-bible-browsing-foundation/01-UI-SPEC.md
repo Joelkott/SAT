@@ -34,11 +34,11 @@ Declared values (must be multiples of 4):
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Inline icon gaps, verse number margin-right |
-| sm | 8px | Compact element spacing, button padding-y, gap between language pills |
-| md | 12px | Card inner padding (p-3), tab bar gaps |
-| lg | 16px | Default section padding, input padding-x |
-| xl | 24px | Page container padding (px-6, py-6) |
-| 2xl | 32px | Major section breaks |
+| sm | 8px | Compact element spacing, button padding-y, gap between language pills, tab bar gaps |
+| md | 16px | Card inner padding (p-4), default section padding, input padding-x |
+| lg | 24px | Page container padding (px-6, py-6) |
+| xl | 32px | Major section breaks |
+| 2xl | 48px | Reserved for future large-scale spacing |
 
 Exceptions: Touch target minimum height is 40px for tab buttons and navigation items (matching existing `h-10` pattern on the add-song button).
 
@@ -112,11 +112,11 @@ Source: all values extracted from existing `page.tsx`, `SearchBar.tsx`, and `glo
 | Pattern | Vertical scrollable list of book names |
 | Container | `bg-[#1a1b1f]` with `border border-[#2a2c31]` and `rounded-xl` |
 | Item height | 36px minimum |
-| Item padding | `px-3 py-2` |
+| Item padding | `px-4 py-2` |
 | Selected state | `bg-[#2c2d32] text-gray-100` with left 2px border in `blue-600` |
 | Unselected state | `text-gray-300 hover:bg-[#22232a]` |
 | Scroll | `overflow-y-auto` with max-height set to available viewport |
-| Grouping | Old Testament / New Testament section headers in `text-xs font-semibold text-gray-500 uppercase tracking-wide` with `px-3 py-2` |
+| Grouping | Old Testament / New Testament section headers in `text-xs font-semibold text-gray-500 uppercase tracking-wide` with `px-4 py-2` |
 
 ### Chapter Grid
 
@@ -146,8 +146,8 @@ Source: all values extracted from existing `page.tsx`, `SearchBar.tsx`, and `glo
 | Property | Value |
 |----------|-------|
 | Container | `bg-[#1a1b1f] rounded-xl border border-[#2a2c31] p-4` |
-| Reference header | `text-base font-semibold text-gray-100 mb-3` — format: "John 3:16 (KJV)" |
-| Verse number | `text-xs font-semibold text-blue-400 align-super mr-1` — superscript style |
+| Reference header | `text-base font-semibold text-gray-100 mb-3` -- format: "John 3:16 (KJV)" |
+| Verse number | `text-xs font-semibold text-blue-400 align-super mr-1` -- superscript style |
 | Verse text | `text-base leading-relaxed text-gray-100` |
 | Verse spacing | `mb-1` between verses within same paragraph |
 | Paragraph spacing | `mb-4` between paragraphs |
@@ -167,6 +167,8 @@ Source: all values extracted from existing `page.tsx`, `SearchBar.tsx`, and `glo
 ## Layout
 
 ### BiblePanel Structure
+
+Primary focal point: the verse display area is the primary visual anchor of the BiblePanel. All navigation (book list, chapter grid, breadcrumb) serves to populate and direct attention to the verse display content area.
 
 ```
 +--------------------------------------------------+
