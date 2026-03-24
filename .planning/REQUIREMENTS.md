@@ -10,7 +10,7 @@
 - [x] **API-01**: Backend proxies all api.bible requests (API key never exposed to frontend)
 - [x] **API-02**: Backend caches Bible metadata (translations, books, chapters) with 24h TTL
 - [x] **API-03**: Backend caches verse/passage content with 1h TTL
-- [ ] **API-04**: Frontend calls Go backend for all Bible data (bibleApi in api.ts)
+- [x] **API-04**: Frontend calls Go backend for all Bible data (bibleApi in api.ts)
 
 ### Navigation
 
@@ -45,8 +45,8 @@
 
 ### UI Integration
 
-- [ ] **UI-01**: Bible tab added to control page alongside existing song management
-- [ ] **UI-02**: Tab switcher to toggle between Songs and Bible views
+- [x] **UI-01**: Bible tab added to control page alongside existing song management
+- [x] **UI-02**: Tab switcher to toggle between Songs and Bible views
 
 ## v2 Requirements
 
@@ -83,7 +83,7 @@
 | API-01 | Phase 1 | Complete |
 | API-02 | Phase 1 | Complete |
 | API-03 | Phase 1 | Complete |
-| API-04 | Phase 1 | Pending |
+| API-04 | Phase 1 | Complete |
 | NAV-01 | Phase 1 | Pending |
 | NAV-02 | Phase 1 | Pending |
 | NAV-03 | Phase 1 | Pending |
@@ -96,8 +96,8 @@
 | LIVE-01 | Phase 3 | Pending |
 | LIVE-02 | Phase 3 | Pending |
 | LIVE-03 | Phase 3 | Pending |
-| UI-01 | Phase 1 | Pending |
-| UI-02 | Phase 1 | Pending |
+| UI-01 | Phase 1 | Complete |
+| UI-02 | Phase 1 | Complete |
 | OUT-01 | Phase 3 | Pending |
 | OUT-02 | Phase 3 | Pending |
 | OUT-03 | Phase 3 | Pending |

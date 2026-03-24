@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md — Backend bible proxy (api.bible client, cache, handlers, routes)
-- [ ] 01-02-PLAN.md — Frontend API client, SongsPanel extraction, tab bar
+- [x] 01-02-PLAN.md — Frontend API client, SongsPanel extraction, tab bar
 - [ ] 01-03-PLAN.md — Bible navigation UI (book list, chapter grid, verse display, reference search)
 
 ### Phase 2: Multi-Translation and Display Modes
