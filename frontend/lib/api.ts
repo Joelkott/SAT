@@ -1,6 +1,13 @@
 import axios from 'axios';
 
-const API_URL = process.env.API_URL || 'http://localhost:8080/api';
+// Next.js replaces NEXT_PUBLIC_* vars at build time
+// Fallback to default if not set
+const API_URL = 
+  (typeof window !== 'undefined' 
+    ? (window as any).__NEXT_PUBLIC_API_URL__ 
+    : undefined) ||
+  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) ||
+  'http://localhost:8080/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -8,6 +15,26 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Log API URL for debugging (only in development)
+if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+  console.log('API URL:', API_URL);
+}
+
+// Add error interceptor for better debugging
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    console.error('API Error:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      message: error.message,
+      data: error.response?.data,
+    });
+    return Promise.reject(error);
+  }
+);
 
 export interface Song {
   id: string;
@@ -191,6 +218,106 @@ export const propresenterApi = {
   // Clear a layer
   clear: async (layer?: string): Promise<{ success: boolean; message: string; layer: string }> => {
     const response = await api.post(`/propresenter/clear${layer ? `?layer=${layer}` : ''}`);
+    return response.data;
+  },
+};
+
+// Bible API types
+export interface BibleTranslation {
+  id: string;
+  name: string;
+  nameLocal: string;
+  abbreviation: string;
+  abbreviationLocal: string;
+  description: string;
+  descriptionLocal: string;
+  language: {
+    id: string;
+    name: string;
+    nameLocal: string;
+    script: string;
+    scriptDirection: string;
+  };
+}
+
+export interface BibleBook {
+  id: string;
+  bibleId: string;
+  abbreviation: string;
+  name: string;
+  nameLong: string;
+}
+
+export interface BibleChapter {
+  id: string;
+  bibleId: string;
+  bookId: string;
+  number: string;
+  reference: string;
+}
+
+export interface BibleVerse {
+  id: string;
+  orgId: string;
+  bibleId: string;
+  bookId: string;
+  chapterId: string;
+  reference: string;
+  text: string;
+}
+
+export interface BiblePassage {
+  id: string;
+  bibleId: string;
+  orgId: string;
+  reference: string;
+  content: string;
+}
+
+export interface BibleChapterContent {
+  id: string;
+  bibleId: string;
+  bookId: string;
+  number: string;
+  reference: string;
+  content: string;
+}
+
+// Bible API - proxied through Go backend (per D-04, D-08)
+export const bibleApi = {
+  // Get all available Bible translations
+  getBibles: async (): Promise<BibleTranslation[]> => {
+    const response = await api.get<BibleTranslation[]>('/bible/bibles');
+    return response.data;
+  },
+
+  // Get books for a Bible translation
+  getBooks: async (bibleId: string): Promise<BibleBook[]> => {
+    const response = await api.get<BibleBook[]>(`/bible/bibles/${bibleId}/books`);
+    return response.data;
+  },
+
+  // Get chapters for a book
+  getChapters: async (bibleId: string, bookId: string): Promise<BibleChapter[]> => {
+    const response = await api.get<BibleChapter[]>(`/bible/bibles/${bibleId}/books/${bookId}/chapters`);
+    return response.data;
+  },
+
+  // Get chapter content (all verses)
+  getChapter: async (bibleId: string, chapterId: string): Promise<BibleChapterContent> => {
+    const response = await api.get<BibleChapterContent>(`/bible/bibles/${bibleId}/chapters/${chapterId}`);
+    return response.data;
+  },
+
+  // Get a single verse
+  getVerse: async (bibleId: string, verseId: string): Promise<BibleVerse> => {
+    const response = await api.get<BibleVerse>(`/bible/bibles/${bibleId}/verses/${verseId}`);
+    return response.data;
+  },
+
+  // Get a passage (verse range)
+  getPassage: async (bibleId: string, passageId: string): Promise<BiblePassage> => {
+    const response = await api.get<BiblePassage>(`/bible/bibles/${bibleId}/passages/${passageId}`);
     return response.data;
   },
 };
