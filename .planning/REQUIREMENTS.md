@@ -14,9 +14,9 @@
 
 ### Navigation
 
-- [ ] **NAV-01**: User can browse scriptures by Book → Chapter → Verse hierarchy
-- [ ] **NAV-02**: User can search by typing a reference (e.g., "John 3:16", "Gen 1:1-5")
-- [ ] **NAV-03**: User can select which Bible translation to view from available translations
+- [x] **NAV-01**: User can browse scriptures by Book → Chapter → Verse hierarchy
+- [x] **NAV-02**: User can search by typing a reference (e.g., "John 3:16", "Gen 1:1-5")
+- [x] **NAV-03**: User can select which Bible translation to view from available translations
 
 ### Multi-Translation
 
@@ -25,7 +25,7 @@
 
 ### Display
 
-- [ ] **DISP-01**: Scripture displays with verse numbers and reference header (e.g., "John 3:16 (KJV)")
+- [x] **DISP-01**: Scripture displays with verse numbers and reference header (e.g., "John 3:16 (KJV)")
 - [ ] **DISP-02**: User can toggle between single-verse and full-passage display modes
 - [ ] **DISP-03**: User can step through verses one at a time during live service
 - [ ] **DISP-04**: User can adjust font size for scripture display
@@ -84,12 +84,12 @@
 | API-02 | Phase 1 | Complete |
 | API-03 | Phase 1 | Complete |
 | API-04 | Phase 1 | Complete |
-| NAV-01 | Phase 1 | Pending |
-| NAV-02 | Phase 1 | Pending |
-| NAV-03 | Phase 1 | Pending |
+| NAV-01 | Phase 1 | Complete |
+| NAV-02 | Phase 1 | Complete |
+| NAV-03 | Phase 1 | Complete |
 | MULTI-01 | Phase 2 | Pending |
 | MULTI-02 | Phase 2 | Pending |
-| DISP-01 | Phase 1 | Pending |
+| DISP-01 | Phase 1 | Complete |
 | DISP-02 | Phase 2 | Pending |
 | DISP-03 | Phase 2 | Pending |
 | DISP-04 | Phase 2 | Pending |
