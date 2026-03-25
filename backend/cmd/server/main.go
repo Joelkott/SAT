@@ -29,14 +29,17 @@ func main() {
 		log.Fatal("DATABASE_URL environment variable is required")
 	}
 
-	typesenseAPIKey := os.Getenv("TYPESENSE_API_KEY")
-	if typesenseAPIKey == "" {
-		log.Fatal("TYPESENSE_API_KEY environment variable is required")
+	// Check if we should skip Typesense indexing during import
+	skipTypesense := os.Getenv("SKIP_TYPESENSE") == "true"
+	if skipTypesense {
+		log.Println("⚠️  SKIP_TYPESENSE enabled - songs will NOT be indexed in Typesense during creation")
 	}
 
+	typesenseAPIKey := os.Getenv("TYPESENSE_API_KEY")
 	typesenseHost := os.Getenv("TYPESENSE_HOST")
-	if typesenseHost == "" {
-		log.Fatal("TYPESENSE_HOST environment variable is required")
+	if typesenseAPIKey == "" || typesenseHost == "" {
+		log.Println("⚠️  Typesense not configured (missing TYPESENSE_API_KEY or TYPESENSE_HOST) - search will use database fallback")
+		skipTypesense = true
 	}
 
 	backupDir := os.Getenv("BACKUP_DIR")
@@ -47,12 +50,6 @@ func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
-	}
-
-	// Check if we should skip Typesense indexing during import
-	skipTypesense := os.Getenv("SKIP_TYPESENSE") == "true"
-	if skipTypesense {
-		log.Println("⚠️  SKIP_TYPESENSE enabled - songs will NOT be indexed in Typesense during creation")
 	}
 
 	// ProPresenter configuration (optional)
@@ -72,10 +69,14 @@ func main() {
 	}
 	defer db.Close()
 
-	// Initialize Typesense
-	ts, err := typesense.New(typesenseAPIKey, typesenseHost)
-	if err != nil {
-		log.Fatalf("Failed to initialize Typesense: %v", err)
+	// Initialize Typesense (optional — graceful degradation if unreachable)
+	var ts *typesense.Client
+	if !skipTypesense {
+		ts, err = typesense.New(typesenseAPIKey, typesenseHost)
+		if err != nil {
+			log.Printf("⚠️  Failed to initialize Typesense: %v — falling back to database search", err)
+			skipTypesense = true
+		}
 	}
 
 	// Initialize backup manager (backup every 100 edits)

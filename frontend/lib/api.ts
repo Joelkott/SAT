@@ -80,7 +80,7 @@ export const songsApi = {
   // Get all songs
   getAll: async (): Promise<Song[]> => {
     const response = await api.get<Song[]>('/songs');
-    return response.data;
+    return response.data || [];
   },
 
   // Get a single song by ID

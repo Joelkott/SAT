@@ -33,6 +33,7 @@ export default function BiblePanel() {
   // Error
   const [error, setError] = useState<string | null>(null);
 
+
   // 1. On mount: fetch translations
   useEffect(() => {
     let cancelled = false;
@@ -192,9 +193,6 @@ export default function BiblePanel() {
       const chaptersData = await bibleApi.getChapters(selectedBibleId, matchedBook.id);
       setChapters(chaptersData);
       const matchedChapter = chaptersData.find((c) => c.number === chapterNum);
-      if (matchedChapter) {
-        setSelectedChapter(matchedChapter);
-      }
 
       const passage = await bibleApi.getPassage(selectedBibleId, passageId);
       setChapterContent({
@@ -205,6 +203,9 @@ export default function BiblePanel() {
         reference: passage.reference,
         content: passage.content,
       });
+      if (matchedChapter) {
+        setSelectedChapter(matchedChapter);
+      }
     } catch (err) {
       console.error('Error searching reference:', err);
       setError('Reference not found. Try a format like John 3:16 or Gen 1:1-5.');

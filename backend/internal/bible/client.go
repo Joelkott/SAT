@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const defaultBaseURL = "https://api.scripture.api.bible/v1"
+const defaultBaseURL = "https://rest.api.bible/v1"
 
 // htmlTagRegex matches HTML tags for stripping from content
 var htmlTagRegex = regexp.MustCompile(`<[^>]*>`)
