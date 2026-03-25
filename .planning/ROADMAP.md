@@ -12,7 +12,7 @@ This roadmap delivers Bible scripture support for the SAT worship display system
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [x] **Phase 1: Bible Browsing Foundation** - Backend api.bible proxy with caching, Bible tab UI, book/chapter/verse navigation, reference search, single-translation display (completed 2026-03-25)
+- [ ] **Phase 1: Bible Browsing Foundation** - Backend api.bible proxy with caching, Bible tab UI, book/chapter/verse navigation, reference search, single-translation display
 - [ ] **Phase 2: Multi-Translation and Display Modes** - Side-by-side translation columns, verse stepping, passage/single-verse toggle, font sizing
 - [ ] **Phase 3: Live Service and Output Tab** - BroadcastChannel scripture display, clear controls, dedicated /output/bible page for browser source capture
 
@@ -28,12 +28,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User can type a reference like "John 3:16" and jump directly to that passage
   4. User can pick a Bible translation from a list of available translations
   5. Scripture text displays with verse numbers and a reference header (e.g., "John 3:16 (KJV)")
-**Plans:** 3/3 plans complete
+**Plans:** 4 plans (3 complete + 1 gap closure)
 
 Plans:
 - [x] 01-01-PLAN.md — Backend bible proxy (api.bible client, cache, handlers, routes)
 - [x] 01-02-PLAN.md — Frontend API client, SongsPanel extraction, tab bar
 - [x] 01-03-PLAN.md — Bible navigation UI (book list, chapter grid, verse display, reference search)
+- [ ] 01-04-PLAN.md — Fix reference search race condition, add click-to-isolate verse (gap closure)
 
 ### Phase 2: Multi-Translation and Display Modes
 **Goal**: Worship leaders can compare translations side-by-side and control how scripture appears on screen
@@ -71,6 +72,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Bible Browsing Foundation | 3/3 | Complete   | 2026-03-25 |
+| 1. Bible Browsing Foundation | 3/4 | Gap closure | - |
 | 2. Multi-Translation and Display Modes | 0/? | Not started | - |
 | 3. Live Service and Output Tab | 0/? | Not started | - |
