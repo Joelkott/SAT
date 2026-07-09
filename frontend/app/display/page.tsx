@@ -3,11 +3,20 @@
 import { useEffect, useState, useRef } from 'react';
 import { Song } from '@/lib/api';
 import SplitLyricsView from '@/components/SplitLyricsView';
+import { parseVerses } from '@/components/bible/verseUtils';
+
+interface ScriptureColumn {
+  abbreviation: string;
+  reference: string;
+  content: string;
+  indic: boolean;
+}
 
 type DisplaySong = Pick<Song, 'id' | 'title' | 'artist' | 'display_lyrics' | 'music_ministry_lyrics' | 'language'>;
 
 export default function Display() {
   const [song, setSong] = useState<DisplaySong | null>(null);
+  const [scripture, setScripture] = useState<ScriptureColumn[] | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1.0);
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -83,10 +92,20 @@ export default function Display() {
       const data = event.data;
       if (data?.type === 'song' && data.song) {
         setSong(data.song as DisplaySong);
-        localStorage.setItem('lyrics-display-current', JSON.stringify(data.song));
+        setScripture(null);
+        try {
+          localStorage.setItem('lyrics-display-current', JSON.stringify(data.song));
+        } catch {}
+      }
+      if (data?.type === 'scripture' && Array.isArray(data.columns)) {
+        setScripture(data.columns as ScriptureColumn[]);
+      }
+      if (data?.type === 'scripture-clear') {
+        setScripture(null);
       }
       if (data?.type === 'clear') {
         setSong(null);
+        setScripture(null);
         localStorage.removeItem('lyrics-display-current');
       }
       if (data?.type === 'zoom' && typeof data.zoomLevel === 'number') {
@@ -148,8 +167,35 @@ export default function Display() {
         <span className="text-gray-400">0</span> Reset
       </div>
 
-      {/* Main Content - Always use SplitLyricsView which supports 1+ panes */}
-      {song ? (
+      {/* Scripture (from Bible tab) takes precedence over the song */}
+      {scripture && scripture.length > 0 ? (
+        <div className="h-full w-full flex items-stretch justify-center gap-8 p-10">
+          {scripture.slice(0, 2).map((col, i) => {
+            const verses = parseVerses(col.content);
+            return (
+              <div key={i} className="flex-1 flex flex-col items-center justify-center text-center max-w-[50%]">
+                <div className="inline-block bg-white text-black font-bold rounded-[0.12em] mb-6 text-2xl md:text-3xl px-4 py-1.5">
+                  {col.reference}
+                  <span className="font-semibold opacity-60"> {col.abbreviation}</span>
+                </div>
+                <div
+                  className={`text-white text-2xl md:text-3xl lg:text-4xl ${col.indic ? 'script-indic' : 'leading-relaxed'}`}
+                >
+                  {verses.map((v, vi) => (
+                    <span key={v.num}>
+                      {verses.length > 1 && (
+                        <sup className="text-[0.55em] font-bold text-white/60 mr-[0.35em]">{v.num}</sup>
+                      )}
+                      {v.text}
+                      {vi < verses.length - 1 ? ' ' : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : song ? (
         <SplitLyricsView lyrics={song.display_lyrics} zoomLevel={zoomLevel} language={song.language} />
       ) : (
         <div className="h-full w-full flex items-center justify-center">

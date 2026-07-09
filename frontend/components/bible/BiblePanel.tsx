@@ -328,11 +328,16 @@ export default function BiblePanel() {
   // Wall output -------------------------------------------------------------
   const [wallState, setWallState] = useState<'idle' | 'sending' | 'live'>('idle');
 
-  // Send the current selection to the LED-wall output page via the backend.
-  // Wall sides are fixed by language: LEFT = English, RIGHT = Malayalam,
-  // regardless of the column order in the control window.
-  const handleSendToWall = useCallback(async () => {
-    if (!selectedChapter) return;
+  // BroadcastChannel to the same-machine /display window.
+  const displayChannelRef = useRef<BroadcastChannel | null>(null);
+  useEffect(() => {
+    const ch = new BroadcastChannel('lyrics-display');
+    displayChannelRef.current = ch;
+    return () => { ch.close(); displayChannelRef.current = null; };
+  }, []);
+
+  // Build LEFT=English / RIGHT=Malayalam columns for outputs.
+  const buildScriptureColumns = useCallback(() => {
     const candidates = selectedBibleIds
       .map((id) => {
         const t = translations.find((x) => x.id === id);
@@ -349,13 +354,18 @@ export default function BiblePanel() {
         };
       })
       .filter(Boolean) as { langId: string; column: { abbreviation: string; reference: string; content: string; indic: boolean } }[];
-    if (candidates.length === 0) return;
-
+    if (candidates.length === 0) return [];
     const english = candidates.find((c) => c.langId === 'eng');
     const malayalam = candidates.find((c) => c.langId === 'mal');
     const left = english || candidates.find((c) => c !== malayalam) || candidates[0];
     const right = malayalam || candidates.find((c) => c !== left) || left;
-    const columns = [left.column, right.column];
+    return [left.column, right.column];
+  }, [selectedBibleIds, translations, fullChapters, selection]);
+
+  // Send the current selection to the LED-wall output page via the backend.
+  const handleSendToWall = useCallback(async () => {
+    if (!selectedChapter) return;
+    const columns = buildScriptureColumns();
 
     try {
       setWallState('sending');
@@ -366,9 +376,17 @@ export default function BiblePanel() {
       setWallState('idle');
       setError('Could not send to the wall output. Check the backend connection.');
     }
-  }, [selectedChapter, selectedBibleIds, translations, fullChapters, selection]);
+  }, [selectedChapter, buildScriptureColumns]);
+
+  // Send the current selection to the same-machine /display window.
+  const handleSendToDisplay = useCallback(() => {
+    const columns = buildScriptureColumns();
+    if (columns.length === 0) return;
+    displayChannelRef.current?.postMessage({ type: 'scripture', columns });
+  }, [buildScriptureColumns]);
 
   const handleClearWall = useCallback(async () => {
+    displayChannelRef.current?.postMessage({ type: 'scripture-clear' });
     try {
       await liveApi.clearScripture();
       setWallState('idle');
@@ -377,6 +395,7 @@ export default function BiblePanel() {
     }
   }, []);
 
+
   // Derived -----------------------------------------------------------------
   const verseNumbers = useMemo(
     () => verseNumbersOf(fullChapters[primaryBibleId]?.content || ''),
@@ -384,6 +403,26 @@ export default function BiblePanel() {
   );
   const selectedVerse =
     selection && selection.start === selection.end ? String(selection.start) : null;
+
+  // Arrow keys step through verses once one is selected.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (!selection || selection.start !== selection.end) return;
+      const idx = verseNumbers.indexOf(String(selection.start));
+      if (idx === -1) return;
+      let next = -1;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = idx + 1;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = idx - 1;
+      if (next < 0 || next >= verseNumbers.length) return;
+      e.preventDefault();
+      const n = Number(verseNumbers[next]);
+      setSelection({ start: n, end: n });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selection, verseNumbers]);
 
   return (
     <div className="px-4 sm:px-6 py-5 space-y-4">
@@ -455,8 +494,16 @@ export default function BiblePanel() {
             {wallState === 'sending' ? 'Sending…' : wallState === 'live' ? 'Update Wall' : 'Send to Wall'}
           </button>
           <button
+            onClick={handleSendToDisplay}
+            disabled={!selectedChapter}
+            title="Send the current passage to the display window (same machine)"
+            className="h-9 px-3 rounded-lg border border-edge-strong text-ink-dim hover:text-ink hover:border-accent cursor-pointer transition-colors duration-150 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Display
+          </button>
+          <button
             onClick={handleClearWall}
-            title="Clear scripture from the wall output"
+            title="Clear scripture from the wall and display outputs"
             className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 cursor-pointer transition-colors duration-150 text-sm"
           >
             Clear
