@@ -57,14 +57,19 @@ jobs:
           script: |
             set -euo pipefail
             cd "${{ secrets.DEPLOY_PATH }}"
+            # Preserve the server's real production env (tracked file, local values).
+            cp .env.production /tmp/env.production.bak 2>/dev/null || true
             git fetch origin main
             git reset --hard origin/main
-            docker compose up -d --build
+            cp /tmp/env.production.bak .env.production 2>/dev/null || true
+            # Backend + DB only — the frontend deploys via Vercel.
+            docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build backend postgres
             docker image prune -f
-            # Wait for the backend healthcheck to go green.
+            # Backend runs with host networking; probe it directly.
             for i in $(seq 1 30); do
-              status=$(docker inspect --format='{{.State.Health.Status}}' teleprompter-backend 2>/dev/null || echo starting)
-              [ "$status" = "healthy" ] && echo "backend healthy" && exit 0
+              if curl -sf http://localhost:8080/api/health >/dev/null 2>&1; then
+                echo "backend healthy"; exit 0
+              fi
               sleep 5
             done
             echo "backend failed to become healthy" >&2
