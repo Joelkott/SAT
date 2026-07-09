@@ -6,6 +6,7 @@ import SearchBar from '@/components/SearchBar';
 import SongList from '@/components/SongList';
 import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
+import QueuePanel from '@/components/QueuePanel';
 import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon } from '@/components/icons';
 
 export default function SongsPanel() {
@@ -182,8 +183,8 @@ export default function SongsPanel() {
         id: song.id,
         title: song.title,
         artist: song.artist,
-        lyrics: song.lyrics,
-        content: song.content,
+        display_lyrics: song.display_lyrics,
+        music_ministry_lyrics: song.music_ministry_lyrics,
         language: song.language,
       },
     };
@@ -382,7 +383,7 @@ export default function SongsPanel() {
                     ? 'script-indic'
                     : 'leading-relaxed'
                 }`}>
-                  {previewSong.lyrics}
+                  {previewSong.display_lyrics}
                 </pre>
               </div>
             </div>
@@ -481,6 +482,13 @@ export default function SongsPanel() {
                 </button>
               </div>
             </div>
+
+            {/* Song queue (drag-and-drop) */}
+            <QueuePanel
+              isOpen={true}
+              onToggle={() => {}}
+              onSongSelect={(song) => handleSendToLive(song)}
+            />
 
             {/* ProPresenter Integration */}
             <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-3">
@@ -618,7 +626,7 @@ export default function SongsPanel() {
                     >
                       <div className="flex items-center min-h-full py-8">
                         <pre className="whitespace-pre-wrap text-center w-full text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl leading-relaxed text-white">
-                          {selectedSong.lyrics}
+                          {selectedSong.display_lyrics}
                         </pre>
                       </div>
                     </div>

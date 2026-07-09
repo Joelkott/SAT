@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/yourusername/audience-stage-teleprompter/internal/backup"
 	"github.com/yourusername/audience-stage-teleprompter/internal/bible"
+	"github.com/yourusername/audience-stage-teleprompter/internal/captionstream"
 	"github.com/yourusername/audience-stage-teleprompter/internal/database"
 	"github.com/yourusername/audience-stage-teleprompter/internal/handlers"
 	"github.com/yourusername/audience-stage-teleprompter/internal/propresenter"
@@ -30,15 +32,11 @@ func main() {
 		log.Fatal("DATABASE_URL environment variable is required")
 	}
 
-	// Check if we should skip Typesense indexing during import
-	skipTypesense := os.Getenv("SKIP_TYPESENSE") == "true"
-	if skipTypesense {
-		log.Println("⚠️  SKIP_TYPESENSE enabled - songs will NOT be indexed in Typesense during creation")
-	}
-
+	// Typesense is optional — explicitly disabled or unconfigured falls back to DB search.
+	skipTypesense := os.Getenv("SKIP_TYPESENSE") == "true" || os.Getenv("DISABLE_TYPESENSE") == "true"
 	typesenseAPIKey := os.Getenv("TYPESENSE_API_KEY")
 	typesenseHost := os.Getenv("TYPESENSE_HOST")
-	if typesenseAPIKey == "" || typesenseHost == "" {
+	if !skipTypesense && (typesenseAPIKey == "" || typesenseHost == "") {
 		log.Println("⚠️  Typesense not configured (missing TYPESENSE_API_KEY or TYPESENSE_HOST) - search will use database fallback")
 		skipTypesense = true
 	}
@@ -60,7 +58,7 @@ func main() {
 	ppPlaylist := os.Getenv("PROPRESENTER_PLAYLIST") // Optional, defaults to "Live Queue"
 
 	if ppPort == "" {
-		ppPort = "1025" // ProPresenter default port
+		ppPort = "4031" // ProPresenter REST API default port
 	}
 
 	// Initialize database
@@ -78,26 +76,67 @@ func main() {
 			log.Printf("⚠️  Failed to initialize Typesense: %v — falling back to database search", err)
 			skipTypesense = true
 		}
+	} else {
+		log.Println("⚠️  Typesense disabled - search will use PostgreSQL")
 	}
 
 	// Initialize backup manager (backup every 100 edits)
 	backupManager := backup.NewManager(dbDSN, backupDir, 100)
 	backupManager.Start()
 
-	// Initialize ProPresenter client (optional)
+	// Initialize ProPresenter client from database settings
 	var ppClient *propresenter.Client
-	if ppEnabled && ppHost != "" {
-		ppConfig := &propresenter.Config{
-			Host:       ppHost,
-			Port:       ppPort,
-			Enabled:    true,
-			PlaylistID: ppPlaylist,
+	settings, err := db.GetSettings()
+	if err != nil {
+		log.Printf("⚠️  Warning: Could not load settings from database: %v", err)
+		// Fallback to environment variables
+		if ppEnabled && ppHost != "" {
+			ppConfig := &propresenter.Config{
+				Host:       ppHost,
+				Port:       ppPort,
+				Enabled:    true,
+				PlaylistID: ppPlaylist,
+			}
+			ppClient = propresenter.New(ppConfig)
+			log.Printf("✅ ProPresenter integration enabled (from env): %s:%s", ppHost, ppPort)
+		} else {
+			ppClient = propresenter.New(nil)
+			log.Println("ℹ️  ProPresenter integration disabled")
 		}
-		ppClient = propresenter.New(ppConfig)
-		log.Printf("✅ ProPresenter integration enabled: %s:%s", ppHost, ppPort)
 	} else {
-		ppClient = propresenter.New(nil)
-		log.Println("ℹ️  ProPresenter integration disabled")
+		// Use database settings
+		if settings.ProPresenterHost != "" && settings.ProPresenterPort > 0 {
+			ppConfig := &propresenter.Config{
+				Host:       settings.ProPresenterHost,
+				Port:       fmt.Sprintf("%d", settings.ProPresenterPort),
+				Enabled:    true,
+				PlaylistID: settings.ProPresenterPlaylist,
+			}
+			ppClient = propresenter.New(ppConfig)
+			if ppClient.IsConnected() {
+				log.Printf("✅ ProPresenter integration enabled and connected: %s:%d", settings.ProPresenterHost, settings.ProPresenterPort)
+			} else {
+				log.Printf("⚠️  ProPresenter integration enabled but not connected: %s:%d", settings.ProPresenterHost, settings.ProPresenterPort)
+			}
+			// Start periodic health checks (every 30 seconds)
+			ppClient.StartPeriodicHealthCheck(30 * time.Second)
+		} else {
+			// Fallback to environment variables if database settings are empty
+			if ppEnabled && ppHost != "" {
+				ppConfig := &propresenter.Config{
+					Host:       ppHost,
+					Port:       ppPort,
+					Enabled:    true,
+					PlaylistID: ppPlaylist,
+				}
+				ppClient = propresenter.New(ppConfig)
+				log.Printf("✅ ProPresenter integration enabled (from env): %s:%s", ppHost, ppPort)
+				ppClient.StartPeriodicHealthCheck(30 * time.Second)
+			} else {
+				ppClient = propresenter.New(nil)
+				log.Println("ℹ️  ProPresenter integration disabled")
+			}
+		}
 	}
 
 	// Bible API configuration (optional)
@@ -120,6 +159,27 @@ func main() {
 	// Initialize handlers
 	h := handlers.New(db, ts, backupManager, ppClient, skipTypesense)
 
+	// Initialize caption stream client (optional - only if JGM_CAPTIONS_URL is set)
+	jgmCaptionsURL := os.Getenv("JGM_CAPTIONS_URL")
+	if jgmCaptionsURL != "" {
+		// Create caption handler that forwards to Bible parsing
+		captionHandler := func(text string, timestamp string) {
+			// Forward caption to the ReceiveCaption handler for Bible reference parsing
+			log.Printf("📖 Received caption from stream: %s", text)
+			h.ProcessCaptionText(text, timestamp)
+		}
+
+		// Create and start caption stream client
+		streamClient := captionstream.NewClient(jgmCaptionsURL+"/audience/stream", captionHandler)
+		if err := streamClient.Start(); err != nil {
+			log.Printf("⚠️  Failed to start caption stream client: %v", err)
+		} else {
+			log.Printf("✅ Caption stream client started: %s", jgmCaptionsURL)
+		}
+	} else {
+		log.Println("ℹ️  JGM_CAPTIONS_URL not set - caption stream disabled")
+	}
+
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
 		AppName:      "Audience Stage Teleprompter",
@@ -135,9 +195,18 @@ func main() {
 	app.Use(logger.New(logger.Config{
 		Format: "[${time}] ${status} - ${latency} ${method} ${path}\n",
 	}))
+	// CORS Configuration
+	// Allow both Vercel frontend and local development
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOrigins == "" {
+		// Default: allow all for development
+		allowedOrigins = "*"
+	}
+
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
-		AllowHeaders: "Origin, Content-Type, Accept",
+		AllowOrigins: allowedOrigins,
+		AllowHeaders: "Origin, Content-Type, Accept, X-API-Key",
+		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
 
 	// Routes
@@ -162,11 +231,23 @@ func main() {
 	liveGroup.Post("/scripture", h.SetLiveScripture)
 	liveGroup.Delete("/scripture", h.ClearLiveScripture)
 
+	// Queue management
+	api.Get("/queue", h.GetQueue)
+	api.Post("/queue", h.AddToQueue)
+	api.Delete("/queue/:id", h.RemoveFromQueue)
+	api.Delete("/queue/song/:song_id", h.RemoveFromQueueBySong)
+	api.Put("/queue/reorder", h.ReorderQueue)
+	api.Post("/queue/clear", h.ClearQueue)
+
 	// Admin
 	admin := api.Group("/admin")
 	admin.Post("/reindex", h.ReindexAll)
 	admin.Get("/backups", h.GetBackups)
 	admin.Post("/backups", h.CreateBackup)
+
+	// Settings
+	api.Get("/settings", h.GetSettings)
+	api.Put("/settings", h.UpdateSettings)
 
 	// ProPresenter integration
 	pp := api.Group("/propresenter")
@@ -179,22 +260,29 @@ func main() {
 	pp.Post("/previous", h.ProPresenterPreviousSlide)
 	pp.Post("/clear", h.ProPresenterClear)
 
-	// Bible API routes
-	if bibleHandler != nil {
-		bibleGroup := api.Group("/bible")
-		bibleGroup.Get("/bibles", bibleHandler.GetBibles)
-		bibleGroup.Get("/bibles/:bibleId/books", bibleHandler.GetBooks)
-		bibleGroup.Get("/bibles/:bibleId/books/:bookId/chapters", bibleHandler.GetChapters)
-		bibleGroup.Get("/bibles/:bibleId/chapters/:chapterId", bibleHandler.GetChapter)
-		bibleGroup.Get("/bibles/:bibleId/verses/:verseId", bibleHandler.GetVerse)
-		bibleGroup.Get("/bibles/:bibleId/passages/:passageId", bibleHandler.GetPassage)
-	}
+	// Bible API routes (api.bible proxy + bundled local KJV/MOV)
+	bibleGroup := api.Group("/bible")
+	bibleGroup.Get("/bibles", bibleHandler.GetBibles)
+	bibleGroup.Get("/bibles/:bibleId/books", bibleHandler.GetBooks)
+	bibleGroup.Get("/bibles/:bibleId/books/:bookId/chapters", bibleHandler.GetChapters)
+	bibleGroup.Get("/bibles/:bibleId/chapters/:chapterId", bibleHandler.GetChapter)
+	bibleGroup.Get("/bibles/:bibleId/verses/:verseId", bibleHandler.GetVerse)
+	bibleGroup.Get("/bibles/:bibleId/passages/:passageId", bibleHandler.GetPassage)
+
+	// Captions integration (from Jgm-live-captions)
+	api.Post("/caption", h.ReceiveCaption)
+	api.Get("/bible/sse", h.BibleSSE) // Server-Sent Events for Bible verses
+
+	// Bible references from remote parser (for VPS deployment)
+	api.Post("/bible-references", h.ReceiveParsedReferences)
 
 	// Start server
 	log.Printf("Server starting on port %s", port)
 	log.Printf("Backup directory: %s", backupDir)
 	log.Printf("Database connected")
-	log.Printf("Typesense host: %s", typesenseHost)
+	if !skipTypesense {
+		log.Printf("Typesense host: %s", typesenseHost)
+	}
 
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)

@@ -54,3 +54,4 @@ backend/server
 
 # Stray Next.js build cache at repo root
 .next/
+frontend/.next/

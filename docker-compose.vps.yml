@@ -1,0 +1,97 @@
+version: '3.8'
+
+# VPS Deployment Configuration
+# This docker-compose file is optimized for VPS deployment WITHOUT Ollama.
+# Bible reference parsing is handled by a remote machine via the bible-parser-client.
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: teleprompter-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-teleprompter_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teleprompter_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-teleprompter}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    networks:
+      - teleprompter-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teleprompter_user} -d ${POSTGRES_DB:-teleprompter}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Backend API (Go) - NO Ollama processing
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: teleprompter-backend
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-teleprompter_user}:${POSTGRES_PASSWORD:-teleprompter_pass}@postgres:5432/${POSTGRES_DB:-teleprompter}?sslmode=disable
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY}
+      TYPESENSE_HOST: ${TYPESENSE_HOST}
+      DISABLE_TYPESENSE: ${DISABLE_TYPESENSE:-true}
+      PORT: 8080
+      BACKUP_DIR: /app/backups
+
+      # CORS for Vercel frontends
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+
+      # Disable local caption processing (handled by remote parser)
+      ENABLE_CAPTION_PROCESSING: "false"
+
+      # API key for remote bible-parser-client authentication
+      BIBLE_PARSER_API_KEY: ${BIBLE_PARSER_API_KEY}
+
+      # Optional: Keep OpenAI as fallback (if API key is provided)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+
+      # JGM Captions integration
+      JGM_CAPTIONS_URL: ${JGM_CAPTIONS_URL:-http://jgm-captions:8080}
+    ports:
+      - "8080:8080"
+    volumes:
+      - backups_data:/app/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      jgm-captions:
+        condition: service_started
+    networks:
+      - teleprompter-network
+    restart: unless-stopped
+
+  # JGM Live Captions (Full Stack - Frontend + Backend)
+  # Keeping JGM deployment as-is, no changes to existing setup
+  jgm-captions:
+    build:
+      context: ../Jgm-live-captions
+      dockerfile: Dockerfile
+    container_name: jgm-captions
+    environment:
+      SONIOX_MASTER_API_KEY: ${SONIOX_API_KEY}
+      PORT: 8080
+      # No TELEPROMPTER_URL needed - captions are consumed via SSE by remote parser
+    ports:
+      - "8081:8080"
+    networks:
+      - teleprompter-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  backups_data:
+    driver: local
+
+networks:
+  teleprompter-network:
+    driver: bridge

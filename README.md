@@ -48,7 +48,7 @@ API_URL=http://localhost:8080/api
 # ProPresenter (optional - via Tailscale)
 PROPRESENTER_ENABLED=true
 PROPRESENTER_HOST=100.x.x.x    # Tailscale IP
-PROPRESENTER_PORT=62683
+PROPRESENTER_PORT=4031         # REST API port (not TCP/IP port)
 PROPRESENTER_PLAYLIST=Live Queue
 ```
 

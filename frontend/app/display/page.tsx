@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Song } from '@/lib/api';
 import SplitLyricsView from '@/components/SplitLyricsView';
 
-type DisplaySong = Pick<Song, 'id' | 'title' | 'artist' | 'lyrics' | 'content' | 'language'>;
+type DisplaySong = Pick<Song, 'id' | 'title' | 'artist' | 'display_lyrics' | 'music_ministry_lyrics' | 'language'>;
 
 export default function Display() {
   const [song, setSong] = useState<DisplaySong | null>(null);
@@ -150,7 +150,7 @@ export default function Display() {
 
       {/* Main Content - Always use SplitLyricsView which supports 1+ panes */}
       {song ? (
-        <SplitLyricsView lyrics={song.lyrics} zoomLevel={zoomLevel} language={song.language} />
+        <SplitLyricsView lyrics={song.display_lyrics} zoomLevel={zoomLevel} language={song.language} />
       ) : (
         <div className="h-full w-full flex items-center justify-center">
           <div className="text-center">

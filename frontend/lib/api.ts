@@ -62,28 +62,35 @@ api.interceptors.response.use(
 export interface Song {
   id: string;
   title: string;
-  artist?: string;
-  lyrics: string;
+  file_name?: string;
+  library: string;
   language: string;
-  content: string;
+  pro_uuid?: string;
+  display_lyrics: string;
+  music_ministry_lyrics: string;
+  artist?: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface CreateSongRequest {
   title: string;
-  artist?: string;
-  lyrics: string;
+  file_name?: string;
+  library: string;
   language: string;
-  content: string;
+  pro_uuid?: string;
+  display_lyrics: string;
+  music_ministry_lyrics: string;
+  artist?: string;
 }
 
 export interface UpdateSongRequest {
   title?: string;
-  artist?: string;
-  lyrics?: string;
+  library?: string;
   language?: string;
-  content?: string;
+  display_lyrics?: string;
+  music_ministry_lyrics?: string;
+  artist?: string;
 }
 
 export interface SearchResult {
@@ -341,6 +348,95 @@ export const bibleApi = {
   // Get a passage (verse range)
   getPassage: async (bibleId: string, passageId: string): Promise<BiblePassage> => {
     const response = await api.get<BiblePassage>(`/bible/bibles/${bibleId}/passages/${passageId}`);
+    return response.data;
+  },
+};
+
+export interface Settings {
+  id: number;
+  laptop_b_ip: string;
+  laptop_b_port: number;
+  live_playlist_uuid: string;
+  propresenter_host: string;
+  propresenter_port: number;
+  propresenter_playlist: string;
+  propresenter_playlist_uuid: string;
+  updated_at: string;
+}
+
+export interface UpdateSettingsRequest {
+  propresenter_host?: string;
+  propresenter_port?: number;
+  propresenter_playlist?: string;
+  propresenter_playlist_uuid?: string;
+}
+
+export const settingsApi = {
+  // Get settings
+  get: async (): Promise<Settings> => {
+    const response = await api.get<Settings>('/settings');
+    return response.data;
+  },
+
+  // Update settings
+  update: async (data: UpdateSettingsRequest): Promise<Settings> => {
+    const response = await api.put<Settings>('/settings', data);
+    return response.data;
+  },
+};
+
+// Queue Management
+export interface QueueItem {
+  id: number;
+  song_id: string;
+  position: number;
+  song?: Song;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AddToQueueRequest {
+  song_id: string;
+}
+
+export interface ReorderQueueRequest {
+  items: { id: number; position: number }[];
+}
+
+export const queueApi = {
+  // Get all queue items
+  getAll: async (): Promise<QueueItem[]> => {
+    const response = await api.get<QueueItem[]>('/queue');
+    return response.data;
+  },
+
+  // Add a song to the queue
+  add: async (songId: string): Promise<QueueItem> => {
+    const response = await api.post<QueueItem>('/queue', { song_id: songId });
+    return response.data;
+  },
+
+  // Remove an item from the queue by queue item ID
+  remove: async (id: number): Promise<{ message: string }> => {
+    const response = await api.delete<{ message: string }>(`/queue/${id}`);
+    return response.data;
+  },
+
+  // Remove an item from the queue by song ID
+  removeBySongId: async (songId: string): Promise<{ message: string }> => {
+    const response = await api.delete<{ message: string }>(`/queue/song/${songId}`);
+    return response.data;
+  },
+
+  // Reorder queue items
+  reorder: async (items: { id: number; position: number }[]): Promise<{ message: string }> => {
+    const response = await api.put<{ message: string }>('/queue/reorder', { items });
+    return response.data;
+  },
+
+  // Clear the entire queue
+  clear: async (): Promise<{ message: string }> => {
+    const response = await api.post<{ message: string }>('/queue/clear');
     return response.data;
   },
 };

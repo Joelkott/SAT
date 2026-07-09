@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
@@ -38,8 +39,8 @@ func (h *Handler) CreateSong(c *fiber.Ctx) error {
 	}
 
 	// Validation
-	if req.Title == "" || req.Lyrics == "" || req.Language == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "Title, lyrics, and language are required"})
+	if req.Title == "" || req.DisplayLyrics == "" || req.Language == "" || req.Library == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Title, display lyrics, language, and library are required"})
 	}
 
 	// Create in database
@@ -49,19 +50,21 @@ func (h *Handler) CreateSong(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to create song"})
 	}
 
-	// Index in Typesense (skip if skipTypesense is enabled)
-	if !h.skipTypesense {
+	// Index in Typesense (skip if skipTypesense is enabled or Typesense is disabled)
+	if !h.skipTypesense && h.ts != nil {
 		if err := h.ts.IndexSong(song); err != nil {
 			log.Printf("Error indexing song in Typesense: %v", err)
 			// Don't fail the request, just log the error
 		}
 	}
 
-	// Check backup threshold
-	count, _ := h.db.GetEditCount()
-	if err := h.backupManager.CheckEditThreshold(count); err != nil {
-		log.Printf("Error checking backup threshold: %v", err)
-	}
+	// Check backup threshold (async - don't block response)
+	go func() {
+		count, _ := h.db.GetEditCount()
+		if err := h.backupManager.CheckEditThreshold(count); err != nil {
+			log.Printf("Error checking backup threshold: %v", err)
+		}
+	}()
 
 	return c.Status(201).JSON(song)
 }
@@ -112,17 +115,19 @@ func (h *Handler) UpdateSong(c *fiber.Ctx) error {
 	}
 
 	// Update in Typesense (skip if unavailable)
-	if !h.skipTypesense {
+	if !h.skipTypesense && h.ts != nil {
 		if err := h.ts.IndexSong(song); err != nil {
 			log.Printf("Error updating song in Typesense: %v", err)
 		}
 	}
 
-	// Check backup threshold
-	count, _ := h.db.GetEditCount()
-	if err := h.backupManager.CheckEditThreshold(count); err != nil {
-		log.Printf("Error checking backup threshold: %v", err)
-	}
+	// Check backup threshold (async - don't block response)
+	go func() {
+		count, _ := h.db.GetEditCount()
+		if err := h.backupManager.CheckEditThreshold(count); err != nil {
+			log.Printf("Error checking backup threshold: %v", err)
+		}
+	}()
 
 	return c.JSON(song)
 }
@@ -140,7 +145,7 @@ func (h *Handler) DeleteSong(c *fiber.Ctx) error {
 	}
 
 	// Delete from Typesense (skip if unavailable)
-	if !h.skipTypesense {
+	if !h.skipTypesense && h.ts != nil {
 		if err := h.ts.DeleteSong(id); err != nil {
 			log.Printf("Error deleting song from Typesense: %v", err)
 		}
@@ -194,15 +199,18 @@ func (h *Handler) SearchSongs(c *fiber.Ctx) error {
 	}
 
 	// Typesense unavailable: fall back to database search so live search keeps working.
-	if h.skipTypesense {
+	if h.skipTypesense || h.ts == nil {
 		q := strings.TrimSpace(query)
 		if q == "*" {
 			q = ""
 		}
-		songs, err := h.db.SearchSongs(q, nil)
+		songs, err := h.db.SearchSongs(q, languages)
 		if err != nil {
 			log.Printf("Error searching songs in DB fallback: %v", err)
 			return c.Status(500).JSON(fiber.Map{"error": "Search failed"})
+		}
+		if len(languages) > 0 {
+			songs = reorderByLanguage(songs, languages)
 		}
 		return c.JSON(typesense.SearchResult{
 			Songs:      songs,
@@ -210,6 +218,7 @@ func (h *Handler) SearchSongs(c *fiber.Ctx) error {
 			SearchTime: 0,
 		})
 	}
+
 
 	results, err := h.ts.Search(query, languages)
 	if err != nil {
@@ -296,9 +305,10 @@ func reorderByLanguage(songs []models.Song, preferences []string) []models.Song 
 
 // ReindexAll reindexes all songs from database to Typesense
 func (h *Handler) ReindexAll(c *fiber.Ctx) error {
-	if h.skipTypesense {
+	if h.skipTypesense || h.ts == nil {
 		return c.Status(503).JSON(fiber.Map{"error": "Search indexing unavailable: Typesense is not configured or unreachable"})
 	}
+
 	songs, err := h.db.GetAllSongs()
 	if err != nil {
 		log.Printf("Error getting songs for reindex: %v", err)
@@ -359,19 +369,31 @@ func (h *Handler) ProPresenterStatus(c *fiber.Ctx) error {
 		})
 	}
 
-	err := h.propresenter.Health()
-	if err != nil {
-		return c.JSON(fiber.Map{
-			"enabled":   true,
-			"connected": false,
-			"message":   err.Error(),
-		})
+	// Check current connection status
+	connected := h.propresenter.IsConnected()
+	
+	// If not connected, try a health check
+	if !connected {
+		err := h.propresenter.Health()
+		if err != nil {
+			return c.JSON(fiber.Map{
+				"enabled":   true,
+				"connected": false,
+				"message":   err.Error(),
+			})
+		}
+		connected = h.propresenter.IsConnected()
 	}
 
 	return c.JSON(fiber.Map{
 		"enabled":   true,
-		"connected": true,
-		"message":   "ProPresenter is connected",
+		"connected": connected,
+		"message":   func() string {
+			if connected {
+				return "ProPresenter is connected"
+			}
+			return "ProPresenter is not connected"
+		}(),
 	})
 }
 
@@ -421,7 +443,7 @@ func (h *Handler) ProPresenterPlaylists(c *fiber.Ctx) error {
 	})
 }
 
-// ProPresenterSendToQueue sends a song to the ProPresenter "Live Queue" playlist
+// ProPresenterSendToQueue sends a song to the ProPresenter playlist using pro_uuid from database
 func (h *Handler) ProPresenterSendToQueue(c *fiber.Ctx) error {
 	if h.propresenter == nil || !h.propresenter.IsEnabled() {
 		return c.Status(503).JSON(fiber.Map{"error": "ProPresenter integration is not enabled"})
@@ -430,42 +452,106 @@ func (h *Handler) ProPresenterSendToQueue(c *fiber.Ctx) error {
 	var req struct {
 		SongID       string `json:"song_id"`
 		SongTitle    string `json:"song_title"`
-		PlaylistName string `json:"playlist_name"` // optional, defaults to "Live Queue"
+		PlaylistName string `json:"playlist_name"` // optional, uses settings if not provided
+		ThemeName    string `json:"theme_name"`     // optional, theme to apply to the song
+		Lyrics       string `json:"lyrics"`         // optional, not used anymore
 	}
 
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	// If song_id provided, fetch title from database
-	songTitle := req.SongTitle
-	if songTitle == "" && req.SongID != "" {
-		song, err := h.db.GetSong(req.SongID)
+	// Get song from database to retrieve pro_uuid
+	var song *models.Song
+	var err error
+	if req.SongID != "" {
+		song, err = h.db.GetSong(req.SongID)
 		if err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "Song not found"})
 		}
-		songTitle = song.Title
+	} else if req.SongTitle != "" {
+		// Try to find by title
+		songs, _ := h.db.GetAllSongs()
+		for _, s := range songs {
+			if s.Title == req.SongTitle {
+				song = &s
+				break
+			}
+		}
+		if song == nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Song not found"})
+		}
+	} else {
+		return c.Status(400).JSON(fiber.Map{"error": "song_id or song_title is required"})
 	}
 
-	if songTitle == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "song_title or song_id is required"})
+	// Check if song has pro_uuid
+	if song.ProUUID == nil || *song.ProUUID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Song does not have a ProPresenter UUID (pro_uuid)"})
 	}
 
+	// Get playlist UUID from settings
+	settings, err := h.db.GetSettings()
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to retrieve settings"})
+	}
+
+	// Use ProPresenter playlist UUID from settings, fallback to live_playlist_uuid
+	playlistUUID := settings.ProPresenterPlaylistUUID
+	if playlistUUID == "" || playlistUUID == "00000000-0000-0000-0000-000000000000" {
+		playlistUUID = settings.LivePlaylistUUID
+	}
+	
 	playlistName := req.PlaylistName
 	if playlistName == "" {
-		playlistName = "Live Queue"
+		playlistName = settings.ProPresenterPlaylist
+		if playlistName == "" {
+			playlistName = "Live Queue"
+		}
 	}
 
-	uuid, err := h.propresenter.SendToLiveQueue(songTitle, playlistName)
+	// If playlist UUID is default/empty, try to find playlist by name
+	if (playlistUUID == "" || playlistUUID == "00000000-0000-0000-0000-000000000000") && playlistName != "" {
+		playlists, err := h.propresenter.GetPlaylists()
+		if err == nil {
+			for _, pl := range playlists {
+				if strings.EqualFold(pl.ID.Name, playlistName) {
+					playlistUUID = pl.ID.UUID
+					// Update settings with the found UUID
+					updates := models.UpdateSettingsRequest{
+						ProPresenterPlaylistUUID: &pl.ID.UUID,
+					}
+					h.db.UpdateSettings(&updates)
+					break
+				}
+			}
+		}
+	}
+
+	// Add song to playlist using pro_uuid
+	err = h.propresenter.AddToPlaylist(playlistUUID, *song.ProUUID)
 	if err != nil {
-		log.Printf("Error sending to ProPresenter queue: %v", err)
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		log.Printf("Error adding song to ProPresenter playlist: %v", err)
+		return c.Status(503).JSON(fiber.Map{
+			"error":      "Failed to sync with ProPresenter",
+			"message":    err.Error(),
+			"song_title": song.Title,
+			"playlist":   playlistName,
+		})
+	}
+
+	uuid := *song.ProUUID
+
+	// Apply theme if specified (ProPresenter API endpoint: PUT /v1/presentation/{uuid}/theme/{theme_uuid})
+	// Note: Theme application requires theme UUID lookup - to be implemented if needed
+	if req.ThemeName != "" {
+		log.Printf("Theme application requested: %s (feature pending ProPresenter theme API integration)", req.ThemeName)
 	}
 
 	return c.JSON(fiber.Map{
 		"success":      true,
 		"message":      "Song added to ProPresenter playlist",
-		"song_title":   songTitle,
+		"song_title":   song.Title,
 		"playlist":     playlistName,
 		"pp_item_uuid": uuid,
 	})
@@ -552,4 +638,176 @@ func (h *Handler) ProPresenterClear(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"success": true, "message": "Layer cleared", "layer": layer})
+}
+
+// ============ Settings Handlers ============
+
+// GetSettings retrieves the current settings
+func (h *Handler) GetSettings(c *fiber.Ctx) error {
+	settings, err := h.db.GetSettings()
+	if err != nil {
+		log.Printf("Error getting settings: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to retrieve settings"})
+	}
+
+	return c.JSON(settings)
+}
+
+// UpdateSettings updates the settings
+func (h *Handler) UpdateSettings(c *fiber.Ctx) error {
+	var req models.UpdateSettingsRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	settings, err := h.db.UpdateSettings(&req)
+	if err != nil {
+		log.Printf("Error updating settings: %v", err)
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to update settings",
+			"details": err.Error(),
+		})
+	}
+
+	// Reconfigure ProPresenter client with new settings
+	if h.propresenter != nil {
+		if settings.ProPresenterHost != "" && settings.ProPresenterPort > 0 {
+			ppConfig := &propresenter.Config{
+				Host:       settings.ProPresenterHost,
+				Port:       fmt.Sprintf("%d", settings.ProPresenterPort),
+				Enabled:    true,
+				PlaylistID: settings.ProPresenterPlaylist,
+			}
+			if err := h.propresenter.Reconfigure(ppConfig); err != nil {
+				log.Printf("Warning: Failed to reconfigure ProPresenter: %v", err)
+			} else {
+				if h.propresenter.IsConnected() {
+					log.Printf("✅ ProPresenter reconfigured and connected: %s:%d", settings.ProPresenterHost, settings.ProPresenterPort)
+				} else {
+					log.Printf("⚠️  ProPresenter reconfigured but not connected: %s:%d", settings.ProPresenterHost, settings.ProPresenterPort)
+				}
+			}
+		} else {
+			// Disable if settings are empty
+			h.propresenter.Reconfigure(nil)
+		}
+	}
+
+	return c.JSON(settings)
+}
+
+// ============ Queue Handlers ============
+
+// GetQueue returns all items in the queue
+func (h *Handler) GetQueue(c *fiber.Ctx) error {
+	items, err := h.db.GetQueue()
+	if err != nil {
+		log.Printf("Error getting queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to retrieve queue"})
+	}
+
+	return c.JSON(items)
+}
+
+// AddToQueue adds a song to the queue
+func (h *Handler) AddToQueue(c *fiber.Ctx) error {
+	var req models.AddToQueueRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.SongID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "song_id is required"})
+	}
+
+	// Verify song exists
+	_, err := h.db.GetSong(req.SongID)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Song not found"})
+	}
+
+	item, err := h.db.AddToQueue(req.SongID)
+	if err != nil {
+		if err.Error() == "song already in queue" {
+			return c.Status(409).JSON(fiber.Map{"error": "Song already in queue"})
+		}
+		log.Printf("Error adding to queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to add song to queue"})
+	}
+
+	return c.Status(201).JSON(item)
+}
+
+// RemoveFromQueue removes an item from the queue by queue item ID
+func (h *Handler) RemoveFromQueue(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	if idStr == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "ID is required"})
+	}
+
+	var id int
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid ID format"})
+	}
+
+	err := h.db.RemoveFromQueue(id)
+	if err != nil {
+		if err.Error() == "queue item not found" {
+			return c.Status(404).JSON(fiber.Map{"error": "Queue item not found"})
+		}
+		log.Printf("Error removing from queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to remove item from queue"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Item removed from queue successfully"})
+}
+
+// RemoveFromQueueBySong removes an item from the queue by song ID
+func (h *Handler) RemoveFromQueueBySong(c *fiber.Ctx) error {
+	songID := c.Params("song_id")
+	if songID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "song_id is required"})
+	}
+
+	err := h.db.RemoveFromQueueBySongID(songID)
+	if err != nil {
+		if err.Error() == "song not in queue" {
+			return c.Status(404).JSON(fiber.Map{"error": "Song not in queue"})
+		}
+		log.Printf("Error removing from queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to remove song from queue"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Song removed from queue successfully"})
+}
+
+// ReorderQueue updates the positions of queue items
+func (h *Handler) ReorderQueue(c *fiber.Ctx) error {
+	var req models.ReorderQueueRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if len(req.Items) == 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "items array is required"})
+	}
+
+	err := h.db.ReorderQueue(req.Items)
+	if err != nil {
+		log.Printf("Error reordering queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to reorder queue"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Queue reordered successfully"})
+}
+
+// ClearQueue removes all items from the queue
+func (h *Handler) ClearQueue(c *fiber.Ctx) error {
+	err := h.db.ClearQueue()
+	if err != nil {
+		log.Printf("Error clearing queue: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to clear queue"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Queue cleared successfully"})
 }

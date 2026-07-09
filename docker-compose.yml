@@ -46,6 +46,15 @@ services:
       API_BIBLE_BASE_URL: ${API_BIBLE_BASE_URL:-https://rest.api.bible/v1}
       # Set TZ in .env so the daily 2 AM backup fires at 2 AM *local* time.
       TZ: ${TZ:-UTC}
+      # Caption/AI Bible reference pipeline (optional)
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      JGM_CAPTIONS_URL: ${JGM_CAPTIONS_URL:-}
+      BIBLE_PARSER_API_KEY: ${BIBLE_PARSER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma2:2b}
+      ENABLE_CAPTION_PROCESSING: ${ENABLE_CAPTION_PROCESSING:-false}
+      DISABLE_TYPESENSE: ${DISABLE_TYPESENSE:-false}
     volumes:
       # Host bind-mount so backups survive `docker-compose down -v` and are
       # reachable for offsite copying.

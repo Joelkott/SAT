@@ -14,9 +14,10 @@ const LANGUAGES = ['english', 'malayalam', 'hindi', 'tamil', 'telugu', 'kannada'
 export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
-  const [lyrics, setLyrics] = useState('');
+  const [library, setLibrary] = useState('Joshua English Slides');
+  const [displayLyrics, setDisplayLyrics] = useState('');
   const [language, setLanguage] = useState('english');
-  const [content, setContent] = useState('');
+  const [musicMinistryLyrics, setMusicMinistryLyrics] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -24,9 +25,10 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
     if (song) {
       setTitle(song.title);
       setArtist(song.artist || '');
-      setLyrics(song.lyrics);
+      setLibrary(song.library);
+      setDisplayLyrics(song.display_lyrics);
       setLanguage(song.language);
-      setContent(song.content);
+      setMusicMinistryLyrics(song.music_ministry_lyrics);
     }
   }, [song]);
 
@@ -34,8 +36,8 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
     e.preventDefault();
     setError('');
 
-    if (!title.trim() || !lyrics.trim() || !language) {
-      setError('Title, lyrics, and language are required');
+    if (!title.trim() || !displayLyrics.trim() || !language || !library.trim()) {
+      setError('Title, display lyrics, language, and library are required');
       return;
     }
 
@@ -47,9 +49,10 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
         const updates: UpdateSongRequest = {
           title: title.trim(),
           artist: artist.trim() || undefined,
-          lyrics: lyrics.trim(),
+          library: library.trim(),
+          display_lyrics: displayLyrics.trim(),
           language: language,
-          content: content.trim() || lyrics.trim(),
+          music_ministry_lyrics: musicMinistryLyrics.trim() || displayLyrics.trim(),
         };
         await songsApi.update(song.id, updates);
       } else {
@@ -57,9 +60,10 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
         const newSong: CreateSongRequest = {
           title: title.trim(),
           artist: artist.trim() || undefined,
-          lyrics: lyrics.trim(),
+          library: library.trim(),
+          display_lyrics: displayLyrics.trim(),
           language: language,
-          content: content.trim() || lyrics.trim(),
+          music_ministry_lyrics: musicMinistryLyrics.trim() || displayLyrics.trim(),
         };
         await songsApi.create(newSong);
       }
@@ -107,6 +111,22 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
           />
         </div>
 
+        {/* Library */}
+        <div>
+          <label htmlFor="library" className="block text-sm font-medium text-ink-dim mb-2">
+            Library *
+          </label>
+          <input
+            id="library"
+            type="text"
+            value={library}
+            onChange={(e) => setLibrary(e.target.value)}
+            className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150"
+            placeholder="e.g., Joshua English Slides"
+            required
+          />
+        </div>
+
         {/* Language */}
         <div>
           <label htmlFor="language" className="block text-sm font-medium text-ink-dim mb-2">
@@ -130,12 +150,12 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
         {/* Lyrics */}
         <div>
           <label htmlFor="lyrics" className="block text-sm font-medium text-ink-dim mb-2">
-            Lyrics *
+            Display Lyrics *
           </label>
           <textarea
             id="lyrics"
-            value={lyrics}
-            onChange={(e) => setLyrics(e.target.value)}
+            value={displayLyrics}
+            onChange={(e) => setDisplayLyrics(e.target.value)}
             rows={12}
             className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150 font-mono text-sm"
             placeholder="Enter song lyrics..."
@@ -146,12 +166,12 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
         {/* Content (optional, defaults to lyrics) */}
         <div>
           <label htmlFor="content" className="block text-sm font-medium text-ink-dim mb-2">
-            Full Content (Optional, defaults to lyrics)
+            Music Ministry Lyrics (Optional, defaults to display lyrics)
           </label>
           <textarea
             id="content"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
+            value={musicMinistryLyrics}
+            onChange={(e) => setMusicMinistryLyrics(e.target.value)}
             rows={8}
             className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150 font-mono text-sm"
             placeholder="Enter full content (if different from lyrics)"
