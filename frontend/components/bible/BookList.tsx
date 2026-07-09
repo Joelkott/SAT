@@ -9,6 +9,45 @@ interface BookListProps {
   isLoading: boolean;
 }
 
+function Section({
+  title,
+  books,
+  selectedBookId,
+  onSelectBook,
+}: {
+  title: string;
+  books: BibleBook[];
+  selectedBookId: string | null;
+  onSelectBook: (book: BibleBook) => void;
+}) {
+  if (books.length === 0) return null;
+  return (
+    <div>
+      <div className="sticky top-0 z-10 bg-surface-raised/95 backdrop-blur-sm text-[10px] font-semibold text-ink-mute uppercase tracking-widest px-4 pt-3 pb-1.5 border-b border-edge/50">
+        {title}
+      </div>
+      <div className="px-2 py-1.5 space-y-px">
+        {books.map((book) => {
+          const selected = selectedBookId === book.id;
+          return (
+            <button
+              key={book.id}
+              onClick={() => onSelectBook(book)}
+              className={`w-full text-left px-2.5 py-1.5 rounded-md text-[13px] cursor-pointer transition-colors duration-150 ${
+                selected
+                  ? 'bg-accent/15 text-accent-hover font-medium'
+                  : 'text-ink-dim hover:bg-surface-hover hover:text-ink'
+              }`}
+            >
+              {book.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function BookList({
   books,
   selectedBookId,
@@ -17,59 +56,31 @@ export default function BookList({
 }: BookListProps) {
   if (isLoading) {
     return (
-      <div className="bg-[#1a1b1f] border border-[#2a2c31] rounded-xl p-4 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent mr-2" />
-        <span className="text-sm text-gray-400">Loading...</span>
+      <div className="bg-surface-raised border border-edge rounded-xl p-6 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-4 w-4 border-2 border-ink-mute border-t-transparent mr-2" />
+        <span className="text-sm text-ink-mute">Loading...</span>
       </div>
     );
   }
 
-  // Split into Old Testament (first 39) and New Testament (remaining)
+  // Protestant canon: first 39 books are Old Testament.
   const oldTestament = books.slice(0, 39);
   const newTestament = books.slice(39);
 
   return (
-    <div className="bg-[#1a1b1f] border border-[#2a2c31] rounded-xl overflow-y-auto max-h-[calc(100vh-240px)]">
-      {oldTestament.length > 0 && (
-        <>
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-2">
-            Old Testament
-          </div>
-          {oldTestament.map((book) => (
-            <button
-              key={book.id}
-              onClick={() => onSelectBook(book)}
-              className={`w-full text-left px-4 py-2 min-h-[36px] cursor-pointer text-sm transition-colors ${
-                selectedBookId === book.id
-                  ? 'bg-[#2c2d32] text-gray-100 border-l-2 border-blue-600'
-                  : 'text-gray-300 hover:bg-[#22232a]'
-              }`}
-            >
-              {book.name}
-            </button>
-          ))}
-        </>
-      )}
-      {newTestament.length > 0 && (
-        <>
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-2 mt-2">
-            New Testament
-          </div>
-          {newTestament.map((book) => (
-            <button
-              key={book.id}
-              onClick={() => onSelectBook(book)}
-              className={`w-full text-left px-4 py-2 min-h-[36px] cursor-pointer text-sm transition-colors ${
-                selectedBookId === book.id
-                  ? 'bg-[#2c2d32] text-gray-100 border-l-2 border-blue-600'
-                  : 'text-gray-300 hover:bg-[#22232a]'
-              }`}
-            >
-              {book.name}
-            </button>
-          ))}
-        </>
-      )}
+    <div className="bg-surface-raised border border-edge rounded-xl overflow-y-auto max-h-[calc(100vh-200px)]">
+      <Section
+        title="Old Testament"
+        books={oldTestament}
+        selectedBookId={selectedBookId}
+        onSelectBook={onSelectBook}
+      />
+      <Section
+        title="New Testament"
+        books={newTestament}
+        selectedBookId={selectedBookId}
+        onSelectBook={onSelectBook}
+      />
     </div>
   );
 }

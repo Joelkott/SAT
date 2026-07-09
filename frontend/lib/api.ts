@@ -2,12 +2,35 @@ import axios from 'axios';
 
 // Next.js replaces NEXT_PUBLIC_* vars at build time
 // Fallback to default if not set
-const API_URL = 
-  (typeof window !== 'undefined' 
-    ? (window as any).__NEXT_PUBLIC_API_URL__ 
+const BUILT_API_URL =
+  (typeof window !== 'undefined'
+    ? (window as any).__NEXT_PUBLIC_API_URL__
     : undefined) ||
   (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) ||
   'http://localhost:8080/api';
+
+// The build-time URL defaults to localhost, which breaks any second device on
+// the LAN (a tablet's "localhost" is itself). If the page is being served from
+// a non-localhost host but the API URL points at localhost, assume the backend
+// lives on the same host as the frontend and follow the page's hostname.
+function resolveApiUrl(): string {
+  if (typeof window === 'undefined') return BUILT_API_URL;
+  try {
+    const url = new URL(BUILT_API_URL);
+    const pageHost = window.location.hostname;
+    const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    const pageIsLocal = pageHost === 'localhost' || pageHost === '127.0.0.1';
+    if (isLocal && !pageIsLocal) {
+      url.hostname = pageHost;
+      return url.toString().replace(/\/$/, '');
+    }
+  } catch {
+    // Malformed URL: fall through to the built value.
+  }
+  return BUILT_API_URL;
+}
+
+const API_URL = resolveApiUrl();
 
 const api = axios.create({
   baseURL: API_URL,
@@ -318,6 +341,39 @@ export const bibleApi = {
   // Get a passage (verse range)
   getPassage: async (bibleId: string, passageId: string): Promise<BiblePassage> => {
     const response = await api.get<BiblePassage>(`/bible/bibles/${bibleId}/passages/${passageId}`);
+    return response.data;
+  },
+};
+
+// Live output state — scripture shown on the LED wall output page.
+// Server-backed (not BroadcastChannel) because the output browser typically
+// runs on a different machine (Resolume/media PC) than the operator.
+export interface LiveScriptureColumn {
+  abbreviation: string;
+  reference: string;
+  content: string;
+  indic: boolean;
+}
+
+export interface LiveScripture {
+  columns: LiveScriptureColumn[] | null;
+  visible: boolean;
+  updated_at: number;
+}
+
+export const liveApi = {
+  getScripture: async (): Promise<LiveScripture> => {
+    const response = await api.get<LiveScripture>('/live/scripture');
+    return response.data;
+  },
+
+  setScripture: async (columns: LiveScriptureColumn[]): Promise<LiveScripture> => {
+    const response = await api.post<LiveScripture>('/live/scripture', { columns });
+    return response.data;
+  },
+
+  clearScripture: async (): Promise<LiveScripture> => {
+    const response = await api.delete<LiveScripture>('/live/scripture');
     return response.data;
   },
 };

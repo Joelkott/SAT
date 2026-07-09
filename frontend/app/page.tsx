@@ -3,43 +3,89 @@
 import { useState } from 'react';
 import SongsPanel from '@/components/SongsPanel';
 import BiblePanel from '@/components/bible/BiblePanel';
+import { MusicIcon, BookOpenIcon, MonitorIcon } from '@/components/icons';
 
 type Tab = 'songs' | 'bible';
+
+const TABS: { id: Tab; label: string; Icon: typeof MusicIcon }[] = [
+  { id: 'songs', label: 'Songs', Icon: MusicIcon },
+  { id: 'bible', label: 'Bible', Icon: BookOpenIcon },
+];
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('songs');
 
   return (
-    <div className="min-h-screen bg-[#111214] text-gray-100">
-      {/* Tab Bar -- per UI-SPEC Tab Bar component */}
-      <div className="border-b border-[#2a2c31]">
-        <div className="px-6 flex gap-2">
-          <button
-            onClick={() => setActiveTab('songs')}
-            className={`px-4 h-10 text-sm font-medium transition-colors ${
-              activeTab === 'songs'
-                ? 'text-gray-100 border-b-2 border-blue-600'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
+    <div className="min-h-screen bg-surface text-ink">
+      {/* App bar */}
+      <header className="sticky top-0 z-30 h-14 border-b border-edge bg-surface/85 backdrop-blur-md">
+        <div className="h-full px-4 sm:px-6 flex items-center gap-4">
+          {/* Brand: JGM logo, tinted via mask so it follows the theme gold */}
+          <div
+            role="img"
+            aria-label="JGM"
+            className="h-8 w-[78px] shrink-0 bg-accent"
+            style={{
+              WebkitMaskImage: 'url(/jgm-logo.png)',
+              maskImage: 'url(/jgm-logo.png)',
+              WebkitMaskRepeat: 'no-repeat',
+              maskRepeat: 'no-repeat',
+              WebkitMaskSize: 'contain',
+              maskSize: 'contain',
+              WebkitMaskPosition: 'left center',
+              maskPosition: 'left center',
+            }}
+          />
+
+          {/* Segmented tab switcher */}
+          <div
+            role="tablist"
+            aria-label="Main sections"
+            className="flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5 ml-2"
           >
-            Songs
-          </button>
+            {TABS.map(({ id, label, Icon }) => {
+              const active = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setActiveTab(id)}
+                  className={`flex items-center gap-2 px-4 h-8 rounded-[7px] text-sm font-medium cursor-pointer transition-all duration-150 ${
+                    active
+                      ? 'bg-surface-hover text-ink shadow-sm border border-edge-strong'
+                      : 'text-ink-mute hover:text-ink-dim border border-transparent'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${active ? 'text-accent-hover' : ''}`} />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Global actions */}
           <button
-            onClick={() => setActiveTab('bible')}
-            className={`px-4 h-10 text-sm font-medium transition-colors ${
-              activeTab === 'bible'
-                ? 'text-gray-100 border-b-2 border-blue-600'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
+            onClick={() => window.open('/display', '_blank', 'noopener,noreferrer')}
+            title="Open the congregation display window"
+            className="flex items-center gap-2 h-9 px-3.5 rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-accent hover:bg-accent/10 cursor-pointer transition-colors duration-150 text-sm font-medium shrink-0"
           >
-            Bible
+            <MonitorIcon className="w-4 h-4" />
+            <span className="hidden sm:inline">Display</span>
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Tab Content */}
-      {activeTab === 'songs' && <SongsPanel />}
-      {activeTab === 'bible' && <BiblePanel />}
+      {/* Tab content — both stay mounted so switching tabs never loses the
+          live song, Bible position, or refetches the translation catalog. */}
+      <div className={activeTab === 'songs' ? '' : 'hidden'}>
+        <SongsPanel />
+      </div>
+      <div className={activeTab === 'bible' ? '' : 'hidden'}>
+        <BiblePanel />
+      </div>
     </div>
   );
 }

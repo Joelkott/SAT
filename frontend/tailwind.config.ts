@@ -9,8 +9,33 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        // Semantic surface scale (darkest → most elevated)
+        surface: {
+          DEFAULT: "var(--surface-base)",
+          sunken: "var(--surface-sunken)",
+          input: "var(--surface-input)",
+          raised: "var(--surface-raised)",
+          hover: "var(--surface-hover)",
+        },
+        edge: {
+          DEFAULT: "var(--edge)",
+          strong: "var(--edge-strong)",
+        },
+        ink: {
+          DEFAULT: "var(--ink)",
+          dim: "var(--ink-dim)",
+          mute: "var(--ink-mute)",
+        },
+        accent: {
+          DEFAULT: "var(--accent)",
+          hover: "var(--accent-hover)",
+          deep: "var(--accent-deep)",
+        },
+        "on-accent": "var(--on-accent)",
+        live: "var(--live)",
+        ok: "var(--ok)",
+        warn: "var(--warn)",
+        danger: "var(--danger)",
       },
     },
   },

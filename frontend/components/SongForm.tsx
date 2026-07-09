@@ -73,15 +73,12 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-        {song ? 'Edit Song' : 'Create New Song'}
-      </h2>
+    <div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Title */}
         <div>
-          <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label htmlFor="title" className="block text-sm font-medium text-ink-dim mb-2">
             Title *
           </label>
           <input
@@ -89,9 +86,7 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg
-                     focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     dark:bg-gray-700 dark:text-white"
+            className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150"
             placeholder="Enter song title"
             required
           />
@@ -99,7 +94,7 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
 
         {/* Artist */}
         <div>
-          <label htmlFor="artist" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label htmlFor="artist" className="block text-sm font-medium text-ink-dim mb-2">
             Artist (Optional)
           </label>
           <input
@@ -107,25 +102,21 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
             type="text"
             value={artist}
             onChange={(e) => setArtist(e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg
-                     focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     dark:bg-gray-700 dark:text-white"
+            className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150"
             placeholder="Enter artist name"
           />
         </div>
 
         {/* Language */}
         <div>
-          <label htmlFor="language" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label htmlFor="language" className="block text-sm font-medium text-ink-dim mb-2">
             Language *
           </label>
           <select
             id="language"
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg
-                     focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     dark:bg-gray-700 dark:text-white"
+            className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150"
             required
           >
             {LANGUAGES.map((lang) => (
@@ -138,7 +129,7 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
 
         {/* Lyrics */}
         <div>
-          <label htmlFor="lyrics" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label htmlFor="lyrics" className="block text-sm font-medium text-ink-dim mb-2">
             Lyrics *
           </label>
           <textarea
@@ -146,9 +137,7 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
             value={lyrics}
             onChange={(e) => setLyrics(e.target.value)}
             rows={12}
-            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg
-                     focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     dark:bg-gray-700 dark:text-white font-mono"
+            className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150 font-mono text-sm"
             placeholder="Enter song lyrics..."
             required
           />
@@ -156,7 +145,7 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
 
         {/* Content (optional, defaults to lyrics) */}
         <div>
-          <label htmlFor="content" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label htmlFor="content" className="block text-sm font-medium text-ink-dim mb-2">
             Full Content (Optional, defaults to lyrics)
           </label>
           <textarea
@@ -164,17 +153,15 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             rows={8}
-            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg
-                     focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     dark:bg-gray-700 dark:text-white font-mono"
+            className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150 font-mono text-sm"
             placeholder="Enter full content (if different from lyrics)"
           />
         </div>
 
         {/* Error message */}
         {error && (
-          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
-            <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
+          <div className="bg-danger/10 border border-danger/30 rounded-lg p-4" role="alert">
+            <p className="text-danger text-sm">{error}</p>
           </div>
         )}
 
@@ -183,7 +170,7 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
           <button
             type="submit"
             disabled={loading}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+            className="flex-1 bg-accent-deep hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed text-on-accent font-semibold py-3 px-4 rounded-lg cursor-pointer transition-colors duration-150"
           >
             {loading ? 'Saving...' : song ? 'Update Song' : 'Create Song'}
           </button>
@@ -191,7 +178,7 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
             type="button"
             onClick={onCancel}
             disabled={loading}
-            className="flex-1 bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-700 text-gray-900 dark:text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+            className="flex-1 bg-surface-hover hover:bg-edge text-ink-dim hover:text-ink font-semibold py-3 px-4 rounded-lg cursor-pointer transition-colors duration-150 border border-edge-strong"
           >
             Cancel
           </button>

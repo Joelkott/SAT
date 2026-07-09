@@ -20,29 +20,30 @@ export default function ChapterGrid({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent mr-2" />
-        <span className="text-sm text-gray-400">Loading...</span>
+        <div className="animate-spin rounded-full h-4 w-4 border-2 border-ink-mute border-t-transparent mr-2" />
+        <span className="text-sm text-ink-mute">Loading...</span>
       </div>
     );
   }
 
   return (
-    <div>
-      <h3 className="text-base font-semibold text-gray-100 mb-3">
-        Select a Chapter
-      </h3>
-      <p className="text-sm text-gray-400 mb-3">
-        {chapters.length} chapters
-      </p>
-      <div className="grid grid-cols-6 gap-2">
+    <div className="bg-surface-raised border border-edge rounded-xl p-4">
+      <div className="flex items-baseline justify-between mb-3">
+        <h3 className="text-sm font-semibold text-ink">
+          {bookName}
+          <span className="text-ink-mute font-normal ml-2">select a chapter</span>
+        </h3>
+        <span className="text-xs text-ink-mute tabular-nums">{chapters.length} chapters</span>
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(44px,1fr))] gap-1.5">
         {chapters.map((chapter) => (
           <button
             key={chapter.id}
             onClick={() => onSelectChapter(chapter)}
-            className={`rounded-md h-10 w-full text-sm transition-colors ${
+            className={`h-10 rounded-lg text-sm tabular-nums cursor-pointer transition-colors duration-150 ${
               selectedChapterId === chapter.id
-                ? 'bg-blue-600 border-blue-600 text-white'
-                : 'bg-[#16171b] border border-[#2a2c31] text-gray-300 hover:border-[#3a3c42] hover:text-gray-100'
+                ? 'bg-accent-deep text-on-accent font-medium'
+                : 'bg-surface-input border border-edge text-ink-dim hover:border-accent/60 hover:text-ink'
             }`}
           >
             {chapter.number}

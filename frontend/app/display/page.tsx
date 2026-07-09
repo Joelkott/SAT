@@ -150,7 +150,7 @@ export default function Display() {
 
       {/* Main Content - Always use SplitLyricsView which supports 1+ panes */}
       {song ? (
-        <SplitLyricsView lyrics={song.lyrics} zoomLevel={zoomLevel} />
+        <SplitLyricsView lyrics={song.lyrics} zoomLevel={zoomLevel} language={song.language} />
       ) : (
         <div className="h-full w-full flex items-center justify-center">
           <div className="text-center">

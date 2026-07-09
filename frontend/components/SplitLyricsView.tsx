@@ -5,6 +5,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 interface SplitLyricsViewProps {
   lyrics: string;
   zoomLevel: number;
+  language?: string;
 }
 
 interface Pane {
@@ -14,7 +15,7 @@ interface Pane {
 
 const MIN_PANE_HEIGHT = 5; // Minimum 5% height per pane
 
-export default function SplitLyricsView({ lyrics, zoomLevel }: SplitLyricsViewProps) {
+export default function SplitLyricsView({ lyrics, zoomLevel, language }: SplitLyricsViewProps) {
   const [panes, setPanes] = useState<Pane[]>([
     { id: '1', heightPercent: 100 },
   ]);
@@ -142,7 +143,7 @@ export default function SplitLyricsView({ lyrics, zoomLevel }: SplitLyricsViewPr
       className="w-full max-w-4xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl mx-auto"
       style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center' }}
     >
-      <pre className="whitespace-pre-wrap text-center w-full text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl leading-relaxed text-white">
+      <pre className={`whitespace-pre-wrap text-center w-full text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}>
         {lyrics}
       </pre>
     </div>
