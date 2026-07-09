@@ -26,6 +26,7 @@ export default function SongsPanel() {
   const [ppStatus, setPpStatus] = useState<ProPresenterStatus | null>(null);
   const [ppSyncing, setPpSyncing] = useState(false);
   const [ppSyncEnabled, setPpSyncEnabled] = useState(true);
+  const [queueOpen, setQueueOpen] = useState(false);
   const displayChannelRef = useRef<BroadcastChannel | null>(null);
   const [leftWidth, setLeftWidth] = useState(0.6);
   const [isDragging, setIsDragging] = useState(false);
@@ -391,11 +392,26 @@ export default function SongsPanel() {
         </div>
       )}
 
+      <QueuePanel
+        isOpen={queueOpen}
+        onToggle={() => setQueueOpen(false)}
+        onSongSelect={(song) => handleSendToLive(song)}
+      />
+
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-5">
         <div className="flex items-start gap-3">
           <div className="flex-1">
             <SearchBar onSearch={handleSearch} />
           </div>
+          <button
+            onClick={() => setQueueOpen((v) => !v)}
+            aria-label="Toggle queue"
+            title="Song queue"
+            className="shrink-0 h-[46px] px-4 flex items-center gap-2 rounded-lg bg-surface-raised border border-edge text-ink-dim hover:text-ink hover:border-accent cursor-pointer transition-colors duration-150 text-sm font-medium"
+          >
+            <MusicIcon className="w-4 h-4" />
+            Queue
+          </button>
           <button
             onClick={handleCreateNew}
             aria-label="Add new song"
@@ -482,13 +498,6 @@ export default function SongsPanel() {
                 </button>
               </div>
             </div>
-
-            {/* Song queue (drag-and-drop) */}
-            <QueuePanel
-              isOpen={true}
-              onToggle={() => {}}
-              onSongSelect={(song) => handleSendToLive(song)}
-            />
 
             {/* ProPresenter Integration */}
             <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-3">

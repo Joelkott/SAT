@@ -42,6 +42,8 @@ services:
       PROPRESENTER_HOST: ${PROPRESENTER_HOST}
       PROPRESENTER_PORT: ${PROPRESENTER_PORT}
       PROPRESENTER_PLAYLIST: ${PROPRESENTER_PLAYLIST}
+      API_BIBLE_KEY: ${API_BIBLE_KEY:-}
+      API_BIBLE_BASE_URL: ${API_BIBLE_BASE_URL:-https://rest.api.bible/v1}
     volumes:
       - backups_data:/app/backups
 

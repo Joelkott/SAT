@@ -427,8 +427,13 @@ export default function BiblePanel() {
           {selectedBibleIds.length < MAX_COLUMNS && (
             <button
               onClick={handleAddSlot}
-              title="Add translation"
-              className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-dashed border-edge-strong text-ink-mute hover:text-ink hover:border-accent cursor-pointer transition-colors duration-150 text-sm"
+              disabled={translations.every((t) => selectedBibleIds.includes(t.id))}
+              title={
+                translations.every((t) => selectedBibleIds.includes(t.id))
+                  ? 'No more translations available — configure API_BIBLE_KEY on the backend for 200+ more'
+                  : 'Add translation'
+              }
+              className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-dashed border-edge-strong text-ink-mute hover:text-ink hover:border-accent cursor-pointer transition-colors duration-150 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <PlusIcon className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Add</span>
