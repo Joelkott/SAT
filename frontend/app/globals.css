@@ -24,41 +24,41 @@
      red carries live/danger; olive carries success. */
 
   /* Surfaces (darkest → most elevated) */
-  --surface-base: #0b0d0f;
-  --surface-sunken: #101214;
-  --surface-input: #16181b;
-  --surface-raised: #131518;
-  --surface-hover: #1c1f23;
+  --surface-base: 11 13 15; /* #0b0d0f */
+  --surface-sunken: 16 18 20; /* #101214 */
+  --surface-input: 22 24 27; /* #16181b */
+  --surface-raised: 19 21 24; /* #131518 */
+  --surface-hover: 28 31 35; /* #1c1f23 */
 
   /* Borders */
-  --edge: #26292e;
-  --edge-strong: #383c43;
+  --edge: 38 41 46; /* #26292e */
+  --edge-strong: 56 60 67; /* #383c43 */
 
   /* Text: slightly warm neutrals to sit well with the gold */
-  --ink: #f0ede4;
-  --ink-dim: #bfbcb0;
-  --ink-mute: #8b897e;
+  --ink: 240 237 228; /* #f0ede4 */
+  --ink-dim: 191 188 176; /* #bfbcb0 */
+  --ink-mute: 139 137 126; /* #8b897e */
 
   /* Accent = gold; text on gold is the near-black */
-  --accent: #e1c572;
-  --accent-hover: #ecd694;
-  --accent-deep: #c9ad5c;
-  --on-accent: #0b0d0f;
+  --accent: 225 197 114; /* #e1c572 */
+  --accent-hover: 236 214 148; /* #ecd694 */
+  --accent-deep: 201 173 92; /* #c9ad5c */
+  --on-accent: 11 13 15; /* #0b0d0f */
 
   /* Status */
-  --live: #e9373a;
-  --danger: #ef575a; /* lightened red for legible small text on dark */
-  --ok: #848f65;
-  --warn: #e1c572;
+  --live: 233 55 58; /* #e9373a */
+  --danger: 239 87 90; /* #ef575a */ /* lightened red for legible small text on dark */
+  --ok: 132 143 101; /* #848f65 */
+  --warn: 225 197 114; /* #e1c572 */
 }
 
 html {
-  background: var(--surface-base);
+  background: rgb(var(--surface-base));
 }
 
 body {
-  color: var(--ink);
-  background: var(--surface-base);
+  color: rgb(var(--ink));
+  background: rgb(var(--surface-base));
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Helvetica Neue', 'Anjali', 'Mangal', sans-serif;
 }
@@ -67,20 +67,20 @@ body {
    list onto the theme so dropdown entries stay legible on every platform. */
 select option,
 select optgroup {
-  background-color: var(--surface-raised);
-  color: var(--ink);
+  background-color: rgb(var(--surface-raised));
+  color: rgb(var(--ink));
 }
 select option:disabled {
-  color: var(--ink-mute);
+  color: rgb(var(--ink-mute));
 }
 select option:checked {
-  background-color: var(--surface-hover);
-  color: var(--accent);
+  background-color: rgb(var(--surface-hover));
+  color: rgb(var(--accent));
 }
 
 /* Keyboard navigation: one consistent, visible focus ring everywhere. */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid rgb(var(--accent));
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -110,12 +110,12 @@ select option:checked {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--edge);
+  background: rgb(var(--edge));
   border-radius: 6px;
-  border: 2px solid var(--surface-base);
+  border: 2px solid rgb(var(--surface-base));
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--edge-strong);
+  background: rgb(var(--edge-strong));
 }
 
 @layer utilities {
