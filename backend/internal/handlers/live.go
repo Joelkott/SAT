@@ -80,3 +80,39 @@ func (h *Handler) ClearLiveScripture(c *fiber.Ctx) error {
 
 	return c.JSON(state)
 }
+
+// --- Verse suggestions: media team proposes, worship team accepts ---
+
+type liveSuggestion struct {
+	Reference string `json:"reference"`
+	From      string `json:"from"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+var suggestionState struct {
+	mu sync.RWMutex
+	s  liveSuggestion
+}
+
+// GET /api/live/suggestion
+func (h *Handler) GetLiveSuggestion(c *fiber.Ctx) error {
+	suggestionState.mu.RLock()
+	defer suggestionState.mu.RUnlock()
+	return c.JSON(suggestionState.s)
+}
+
+// POST /api/live/suggestion
+func (h *Handler) SetLiveSuggestion(c *fiber.Ctx) error {
+	var req struct {
+		Reference string `json:"reference"`
+		From      string `json:"from"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.Reference == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "reference is required"})
+	}
+	suggestionState.mu.Lock()
+	suggestionState.s = liveSuggestion{Reference: req.Reference, From: req.From, UpdatedAt: time.Now().UnixMilli()}
+	out := suggestionState.s
+	suggestionState.mu.Unlock()
+	return c.JSON(out)
+}

@@ -69,7 +69,8 @@ function ScripturePanel({
           the text legible over any background behind the capture. Fills the
           panel so the left/right boxes are always identical in size. */}
       <div
-        className="w-full h-full flex flex-col items-center justify-center text-center rounded-[0.9em] border border-white/20 shadow-2xl"
+        key={reference}
+        className="fade-swap w-full h-full flex flex-col items-center justify-center text-center rounded-[0.9em] border border-white/20 shadow-2xl"
         style={{
           fontSize: bodySize,
           padding: '0.9em 1em',

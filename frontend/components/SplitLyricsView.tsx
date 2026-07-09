@@ -6,6 +6,7 @@ interface SplitLyricsViewProps {
   lyrics: string;
   zoomLevel: number;
   language?: string;
+  textAlign?: 'left' | 'center' | 'right';
 }
 
 interface Pane {
@@ -15,7 +16,7 @@ interface Pane {
 
 const MIN_PANE_HEIGHT = 5; // Minimum 5% height per pane
 
-export default function SplitLyricsView({ lyrics, zoomLevel, language }: SplitLyricsViewProps) {
+export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign = 'center' }: SplitLyricsViewProps) {
   const [panes, setPanes] = useState<Pane[]>([
     { id: '1', heightPercent: 100 },
   ]);
@@ -32,6 +33,17 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language }: SplitLy
   };
 
   // Remove a split (can go down to 1 pane)
+  // Keyboard: ] adds a pane, [ removes the last one.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === ']') { e.preventDefault(); addSplit(); }
+      if (e.key === '[') { e.preventDefault(); removeSplit(panes.length - 1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panes.length]);
+
   const removeSplit = (index: number) => {
     if (panes.length <= 1) return;
     const removedHeight = panes[index].heightPercent;
@@ -140,10 +152,10 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language }: SplitLy
 
   const renderLyrics = () => (
     <div 
-      className="w-full max-w-4xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl mx-auto"
+      className="w-full"
       style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center' }}
     >
-      <pre className={`whitespace-pre-wrap text-center w-full text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}>
+      <pre className={`whitespace-pre-wrap w-full ${textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'} text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}>
         {lyrics}
       </pre>
     </div>

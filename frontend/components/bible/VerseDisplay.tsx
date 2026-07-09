@@ -92,7 +92,7 @@ export default function VerseDisplay({
         <h3 className="text-sm font-semibold text-ink truncate">{reference}</h3>
       </div>
       {/* Scripture body: scrolls within the card so side-by-side columns stay aligned */}
-      <div className={`px-4 py-4 overflow-y-auto max-h-[58vh] text-ink ${indic ? 'script-indic text-[17px]' : 'text-base leading-relaxed'}`}>
+      <div key={reference} className={`fade-swap px-4 py-4 overflow-y-auto max-h-[58vh] text-ink ${indic ? 'script-indic text-[17px]' : 'text-base leading-relaxed'}`}>
         {paragraphs.map((paragraph) => (
           <p key={paragraph.key} className="mb-4 last:mb-0">
             {paragraph.parts.map((part, i) =>

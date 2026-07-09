@@ -230,6 +230,8 @@ func main() {
 	liveGroup.Get("/scripture", h.GetLiveScripture)
 	liveGroup.Post("/scripture", h.SetLiveScripture)
 	liveGroup.Delete("/scripture", h.ClearLiveScripture)
+	liveGroup.Get("/suggestion", h.GetLiveSuggestion)
+	liveGroup.Post("/suggestion", h.SetLiveSuggestion)
 
 	// Queue management
 	api.Get("/queue", h.GetQueue)

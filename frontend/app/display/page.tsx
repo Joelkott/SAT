@@ -17,6 +17,17 @@ type DisplaySong = Pick<Song, 'id' | 'title' | 'artist' | 'display_lyrics' | 'mu
 export default function Display() {
   const [song, setSong] = useState<DisplaySong | null>(null);
   const [scripture, setScripture] = useState<ScriptureColumn[] | null>(null);
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
+
+  // Restore alignment preference
+  useEffect(() => {
+    const saved = localStorage.getItem('lyrics-text-align');
+    if (saved === 'left' || saved === 'center' || saved === 'right') setTextAlign(saved);
+  }, []);
+  const applyAlign = (a: 'left' | 'center' | 'right') => {
+    setTextAlign(a);
+    localStorage.setItem('lyrics-text-align', a);
+  };
   const [zoomLevel, setZoomLevel] = useState(1.0);
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -79,6 +90,9 @@ export default function Display() {
         e.preventDefault();
         setZoomLevel(1.0);
       }
+      if (e.key === 'l') setTextAlign('left');
+      if (e.key === 'c') setTextAlign('center');
+      if (e.key === 'r') setTextAlign('right');
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -125,6 +139,22 @@ export default function Display() {
           ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}
         `}
       >
+        {/* Alignment Controls */}
+        <div className="flex items-center gap-1 bg-gray-800/80 backdrop-blur-sm rounded-lg px-2 py-1 border border-gray-600">
+          {(['left', 'center', 'right'] as const).map((a) => (
+            <button
+              key={a}
+              onClick={() => applyAlign(a)}
+              title={`Align ${a} (${a[0]})`}
+              className={`w-8 h-8 flex flex-col items-${a === 'left' ? 'start' : a === 'right' ? 'end' : 'center'} justify-center gap-[3px] px-1.5 rounded transition-colors ${textAlign === a ? 'bg-gray-600' : 'hover:bg-gray-700'}`}
+            >
+              <span className="block h-[2px] w-full bg-white/90 rounded" />
+              <span className="block h-[2px] w-3/5 bg-white/90 rounded" />
+              <span className="block h-[2px] w-4/5 bg-white/90 rounded" />
+            </button>
+          ))}
+        </div>
+
         {/* Zoom Controls */}
         <div className="flex items-center gap-1 bg-gray-800/80 backdrop-blur-sm rounded-lg px-2 py-1 border border-gray-600">
           <button
@@ -169,17 +199,17 @@ export default function Display() {
 
       {/* Scripture (from Bible tab) takes precedence over the song */}
       {scripture && scripture.length > 0 ? (
-        <div className="h-full w-full flex items-stretch justify-center gap-8 p-10">
+        <div className="h-full w-full flex items-stretch justify-center gap-6 p-4">
           {scripture.slice(0, 2).map((col, i) => {
             const verses = parseVerses(col.content);
             return (
-              <div key={i} className="flex-1 flex flex-col items-center justify-center text-center max-w-[50%]">
+              <div key={`${i}-${col.reference}`} className="fade-swap flex-1 flex flex-col items-center justify-center text-center">
                 <div className="inline-block bg-white text-black font-bold rounded-[0.12em] mb-6 text-2xl md:text-3xl px-4 py-1.5">
                   {col.reference}
                   <span className="font-semibold opacity-60"> {col.abbreviation}</span>
                 </div>
                 <div
-                  className={`text-white text-2xl md:text-3xl lg:text-4xl ${col.indic ? 'script-indic' : 'leading-relaxed'}`}
+                  className={`text-white text-3xl md:text-4xl lg:text-5xl ${col.indic ? 'script-indic' : 'leading-relaxed'}`}
                 >
                   {verses.map((v, vi) => (
                     <span key={v.num}>
@@ -196,7 +226,7 @@ export default function Display() {
           })}
         </div>
       ) : song ? (
-        <SplitLyricsView lyrics={song.display_lyrics} zoomLevel={zoomLevel} language={song.language} />
+        <SplitLyricsView lyrics={song.display_lyrics} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} />
       ) : (
         <div className="h-full w-full flex items-center justify-center">
           <div className="text-center">

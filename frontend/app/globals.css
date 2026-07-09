@@ -123,3 +123,12 @@ select option:checked {
     text-wrap: balance;
   }
 }
+
+/* Verse-change transition: content fades in when the selection changes. */
+@keyframes verse-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fade-swap {
+  animation: verse-fade 0.3s ease;
+}

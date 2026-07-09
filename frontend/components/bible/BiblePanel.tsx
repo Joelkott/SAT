@@ -325,6 +325,35 @@ export default function BiblePanel() {
     }
   }, []);
 
+  // Team role: media proposes verses, worship gets an accept prompt.
+  const [role, setRole] = useState<'media' | 'worship'>('worship');
+  useEffect(() => {
+    const saved = localStorage.getItem('bible-role');
+    if (saved === 'media' || saved === 'worship') setRole(saved);
+  }, []);
+  const changeRole = (r: 'media' | 'worship') => {
+    setRole(r);
+    localStorage.setItem('bible-role', r);
+  };
+
+  const [suggestion, setSuggestion] = useState<{ reference: string; updated_at: number } | null>(null);
+  const seenSuggestionRef = useRef<number>(0);
+
+  // Worship team polls for media-team suggestions.
+  useEffect(() => {
+    if (role !== 'worship') return;
+    if (seenSuggestionRef.current === 0) seenSuggestionRef.current = Date.now();
+    const id = setInterval(async () => {
+      try {
+        const sug = await liveApi.getSuggestion();
+        if (sug.reference && sug.updated_at > seenSuggestionRef.current) {
+          setSuggestion({ reference: sug.reference, updated_at: sug.updated_at });
+        }
+      } catch {}
+    }, 3000);
+    return () => clearInterval(id);
+  }, [role]);
+
   // Wall output -------------------------------------------------------------
   const [wallState, setWallState] = useState<'idle' | 'sending' | 'live'>('idle');
 
@@ -370,13 +399,17 @@ export default function BiblePanel() {
     try {
       setWallState('sending');
       await liveApi.setScripture(columns);
+      displayChannelRef.current?.postMessage({ type: 'scripture', columns });
+      if (role === 'media' && columns[0]) {
+        liveApi.setSuggestion(columns[0].reference, 'media').catch(() => {});
+      }
       setWallState('live');
     } catch (err) {
       console.error('Error sending scripture to wall:', err);
       setWallState('idle');
       setError('Could not send to the wall output. Check the backend connection.');
     }
-  }, [selectedChapter, buildScriptureColumns]);
+  }, [selectedChapter, buildScriptureColumns, role]);
 
   // Send the current selection to the same-machine /display window.
   const handleSendToDisplay = useCallback(() => {
@@ -404,25 +437,68 @@ export default function BiblePanel() {
   const selectedVerse =
     selection && selection.start === selection.end ? String(selection.start) : null;
 
-  // Arrow keys step through verses once one is selected.
+  // Cross-boundary stepping: which verse/chapter to land on once data loads.
+  const pendingVerseRef = useRef<'first' | 'last' | null>(null);
+  const pendingChapterRef = useRef<'first' | 'last' | null>(null);
+
+  // Consume pending chapter once the new book's chapter list arrives.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (!pendingChapterRef.current || chapters.length === 0) return;
+    const target = pendingChapterRef.current === 'first' ? chapters[0] : chapters[chapters.length - 1];
+    pendingChapterRef.current = null;
+    setSelectedChapter(target);
+  }, [chapters]);
+
+  // Consume pending verse once the new chapter's verses arrive.
+  useEffect(() => {
+    if (!pendingVerseRef.current || verseNumbers.length === 0) return;
+    const num = Number(pendingVerseRef.current === 'first' ? verseNumbers[0] : verseNumbers[verseNumbers.length - 1]);
+    pendingVerseRef.current = null;
+    setSelection({ start: num, end: num });
+  }, [verseNumbers]);
+
+  // Arrow keys step verses, flowing across chapter and book boundaries.
+  useEffect(() => {
+    const step = (dir: 1 | -1) => {
       if (!selection || selection.start !== selection.end) return;
       const idx = verseNumbers.indexOf(String(selection.start));
       if (idx === -1) return;
-      let next = -1;
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = idx + 1;
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = idx - 1;
-      if (next < 0 || next >= verseNumbers.length) return;
-      e.preventDefault();
-      const n = Number(verseNumbers[next]);
-      setSelection({ start: n, end: n });
+      const next = idx + dir;
+      if (next >= 0 && next < verseNumbers.length) {
+        const n = Number(verseNumbers[next]);
+        setSelection({ start: n, end: n });
+        return;
+      }
+      // Chapter boundary
+      if (!selectedChapter) return;
+      const cIdx = chapters.findIndex((c) => c.id === selectedChapter.id);
+      const nextChapter = chapters[cIdx + dir];
+      if (nextChapter) {
+        pendingVerseRef.current = dir === 1 ? 'first' : 'last';
+        setSelection(null);
+        setSelectedChapter(nextChapter);
+        return;
+      }
+      // Book boundary
+      if (!selectedBook) return;
+      const bIdx = books.findIndex((b) => b.id === selectedBook.id);
+      const nextBook = books[bIdx + dir];
+      if (!nextBook) return;
+      pendingChapterRef.current = dir === 1 ? 'first' : 'last';
+      pendingVerseRef.current = dir === 1 ? 'first' : 'last';
+      setSelection(null);
+      setSelectedChapter(null);
+      setSelectedBook(nextBook);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); step(1); }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selection, verseNumbers]);
+  }, [selection, verseNumbers, chapters, selectedChapter, books, selectedBook]);
 
   return (
     <div className="px-4 sm:px-6 py-5 space-y-4">
@@ -501,6 +577,19 @@ export default function BiblePanel() {
           >
             Display
           </button>
+          <div className="flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5" title="Team role">
+            {(['media', 'worship'] as const).map((r) => (
+              <button
+                key={r}
+                onClick={() => changeRole(r)}
+                className={`px-2.5 h-7 rounded-md text-xs font-medium capitalize cursor-pointer transition-colors duration-150 ${
+                  role === r ? 'bg-surface-hover text-ink border border-edge-strong' : 'text-ink-mute hover:text-ink-dim border border-transparent'
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
           <button
             onClick={handleClearWall}
             title="Clear scripture from the wall and display outputs"
@@ -510,6 +599,33 @@ export default function BiblePanel() {
           </button>
         </div>
       </div>
+
+      {/* Media-team verse suggestion */}
+      {role === 'worship' && suggestion && (
+        <div className="fade-swap flex items-center gap-3 bg-accent/10 border border-accent/40 rounded-lg px-4 py-2.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
+          <p className="text-sm text-ink flex-1">
+            Media team suggests <span className="font-semibold text-accent-hover">{suggestion.reference}</span>
+          </p>
+          <button
+            onClick={() => {
+              seenSuggestionRef.current = suggestion.updated_at;
+              handleReferenceSearch(suggestion.reference);
+              setSuggestion(null);
+            }}
+            className="h-8 px-3.5 rounded-md bg-accent-deep hover:bg-accent text-on-accent text-sm font-semibold cursor-pointer transition-colors duration-150"
+          >
+            Accept
+          </button>
+          <button
+            onClick={() => { seenSuggestionRef.current = suggestion.updated_at; setSuggestion(null); }}
+            aria-label="Dismiss suggestion"
+            className="p-1.5 rounded-md text-ink-mute hover:text-ink hover:bg-surface-hover cursor-pointer transition-colors duration-150"
+          >
+            <XIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Breadcrumb */}
       {selectedBook && (
