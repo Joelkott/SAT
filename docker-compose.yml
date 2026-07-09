@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -13,8 +11,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/migrations:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "5432:5432"
+    # Postgres is reachable from other containers via the compose network.
+    # Not published to the host; use `docker exec teleprompter-db psql ...`
+    # or temporarily add a ports mapping if a host DB tool is needed.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teleprompter_user} -d ${POSTGRES_DB:-teleprompter}"]
       interval: 10s
@@ -45,10 +44,20 @@ services:
       # Bible API Integration
       API_BIBLE_KEY: ${API_BIBLE_KEY:-}
       API_BIBLE_BASE_URL: ${API_BIBLE_BASE_URL:-https://rest.api.bible/v1}
+      # Set TZ in .env so the daily 2 AM backup fires at 2 AM *local* time.
+      TZ: ${TZ:-UTC}
     volumes:
-      - backups_data:/app/backups
+      # Host bind-mount so backups survive `docker-compose down -v` and are
+      # reachable for offsite copying.
+      - ./backend/backups:/app/backups
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # Next.js Frontend
   frontend:
@@ -60,14 +69,20 @@ services:
     container_name: teleprompter-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     environment:
       API_URL: ${API_URL:-http://localhost:8080/api}
       NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:8080/api}
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 volumes:
   postgres_data:
-  backups_data:
 

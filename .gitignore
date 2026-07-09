@@ -48,3 +48,9 @@ Thumbs.db
 *.sql
 *.sql.gz
 *.backup
+
+# Compiled server binary
+backend/server
+
+# Stray Next.js build cache at repo root
+.next/

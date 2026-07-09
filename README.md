@@ -67,7 +67,8 @@ docker-compose down
 # Rebuild after code changes
 docker-compose up -d --build
 
-# Reset database (WARNING: deletes all data)
+# Reset database (DANGER: permanently deletes the Postgres volume and ALL songs.
+# Backups in ./backend/backups survive — restore from there afterwards if needed.)
 docker-compose down -v
 docker-compose up -d
 ```
@@ -167,7 +168,7 @@ psql postgres://teleprompter_user:your_secure_password@localhost:5432/teleprompt
 
 ```bash
 cd backend
-cp .env.example .env
+cp ../.env.example .env   # single template lives at the repo root
 ```
 
 Edit `.env`:

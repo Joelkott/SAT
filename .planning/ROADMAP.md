@@ -34,7 +34,7 @@ Plans:
 - [x] 01-01-PLAN.md — Backend bible proxy (api.bible client, cache, handlers, routes)
 - [x] 01-02-PLAN.md — Frontend API client, SongsPanel extraction, tab bar
 - [x] 01-03-PLAN.md — Bible navigation UI (book list, chapter grid, verse display, reference search)
-- [ ] 01-04-PLAN.md — Fix reference search race condition, add click-to-isolate verse (gap closure)
+- [x] 01-04-PLAN.md — Fix reference search race condition, add click-to-isolate verse (gap closure)
 
 ### Phase 2: Multi-Translation and Display Modes
 **Goal**: Worship leaders can compare translations side-by-side and control how scripture appears on screen
@@ -49,7 +49,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 02-01: TBD
+- [x] 02-01 (partial): Multi-translation side-by-side columns (default KJV + MOV, "+ Add" up to 4, per-column remove), client-side verse isolation via shared `selection` state. Delivered in BiblePanel rewrite.
+- [ ] 02-02: Verse stepping (prev/next) and font sizing — pending
 
 ### Phase 3: Live Service and Output Tab
 **Goal**: Worship leaders can send scripture to the congregation display and to Resolume/ProPresenter via browser source capture
@@ -63,7 +64,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 03-01: TBD
+- [x] 03-01 (partial): LED-wall output delivered — server-backed live scripture state (`/api/live/scripture` GET/POST/DELETE, in-memory), chrome-less `/output/bible` page (query-configurable w/h/center/fs/guides, polls 1s, auto-fit text, side panels flank IMAG center gap), "Send to Wall"/"Clear" controls in Bible toolbar. Cross-machine by design (Resolume PC ≠ operator PC).
+- [ ] 03-02: BroadcastChannel scripture display in the existing /display window — pending
 
 ## Progress
 

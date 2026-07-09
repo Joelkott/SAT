@@ -9,7 +9,7 @@ A church worship display system with a Go/Fiber backend and Next.js frontend. It
 
 ### Constraints
 
-- **API:** Must use api.bible REST API — no local Bible database
+- **API:** Use api.bible REST API as the primary source. **Exception:** the two primary translations — KJV and Malayalam OV (Sathyavedapusthakam 1910), both public domain and the latter missing from api.bible — are bundled locally in `backend/internal/bible/data/` (embedded via Go `embed`) and served through the same `/api/bible/*` endpoints with api.bible-compatible IDs/shapes. Regenerate with `backend/internal/bible/data/generate.py`.
 - **Tech stack:** Must stay within existing Go + Next.js stack
 - **Translations:** Up to 4 simultaneous translations in multiview
 - **Docker:** Must work within existing docker-compose deployment
