@@ -21,12 +21,13 @@ FROM alpine:latest
 
 WORKDIR /app
 
-# Install ca-certificates for HTTPS requests and postgresql-client for backups
-RUN apk --no-cache add ca-certificates postgresql-client
+# ca-certificates for HTTPS, postgresql-client for backups, tzdata so the
+# 2 AM backup scheduler uses local time (set TZ in docker-compose).
+RUN apk --no-cache add ca-certificates postgresql-client tzdata
 
 # Copy the binary from builder
 COPY --from=builder /app/server .
-COPY --from=builder /app/migrations ./migrations
+# Note: migrations are mounted from host in docker-compose.yml, so no need to copy here
 
 # Create backups directory
 RUN mkdir -p /app/backups

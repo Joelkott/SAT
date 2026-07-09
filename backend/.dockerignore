@@ -29,3 +29,6 @@ bin/
 # Test files
 *_test.go
 
+
+# Compiled binary (built inside Docker)
+server

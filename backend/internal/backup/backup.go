@@ -57,7 +57,8 @@ func (m *Manager) CheckEditThreshold(currentEditCount int) error {
 	defer m.mu.Unlock()
 
 	if currentEditCount-m.lastEditCount >= m.editsThreshold {
-		if err := m.CreateBackup("edit-threshold"); err != nil {
+		// mu is already held; calling CreateBackup here would self-deadlock.
+		if err := m.createBackupLocked("edit-threshold"); err != nil {
 			return err
 		}
 		m.lastEditCount = currentEditCount
@@ -70,7 +71,11 @@ func (m *Manager) CheckEditThreshold(currentEditCount int) error {
 func (m *Manager) CreateBackup(backupType string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.createBackupLocked(backupType)
+}
 
+// createBackupLocked performs the dump. Caller must hold m.mu.
+func (m *Manager) createBackupLocked(backupType string) error {
 	// Create backup directory if it doesn't exist
 	if err := os.MkdirAll(m.backupDir, 0755); err != nil {
 		return fmt.Errorf("error creating backup directory: %w", err)

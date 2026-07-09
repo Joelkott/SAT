@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -103,17 +104,17 @@ func main() {
 	bibleAPIKey := os.Getenv("API_BIBLE_KEY")
 	bibleBaseURL := os.Getenv("API_BIBLE_BASE_URL")
 
-	var bibleHandler *bible.BibleHandler
-	if bibleAPIKey != "" {
-		bibleConfig := &bible.Config{
-			APIKey:  bibleAPIKey,
-			BaseURL: bibleBaseURL,
-		}
-		bibleClient := bible.New(bibleConfig)
-		bibleHandler = bible.NewHandler(bibleClient)
-		log.Printf("Bible API integration enabled")
+	// api.bible client (optional) + bundled local Bibles (always available).
+	bibleClient := bible.New(&bible.Config{
+		APIKey:  bibleAPIKey,
+		BaseURL: bibleBaseURL,
+	})
+	bibleLocal := bible.NewLocalProvider()
+	bibleHandler := bible.NewHandler(bibleClient, bibleLocal)
+	if bibleClient.IsConfigured() {
+		log.Println("Bible integration enabled (api.bible + local KJV/MOV)")
 	} else {
-		log.Println("Bible API integration disabled (no API_BIBLE_KEY)")
+		log.Println("Bible integration enabled (local KJV/MOV only — no API_BIBLE_KEY)")
 	}
 
 	// Initialize handlers
@@ -123,6 +124,10 @@ func main() {
 	app := fiber.New(fiber.Config{
 		AppName:      "Audience Stage Teleprompter",
 		ServerHeader: "AST",
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+		BodyLimit:    2 * 1024 * 1024, // 2MB — largest payload is song lyrics
 	})
 
 	// Middleware
@@ -150,6 +155,12 @@ func main() {
 
 	// Search
 	api.Get("/search", h.SearchSongs)
+
+	// Live output state (scripture on the LED wall via /output/bible)
+	liveGroup := api.Group("/live")
+	liveGroup.Get("/scripture", h.GetLiveScripture)
+	liveGroup.Post("/scripture", h.SetLiveScripture)
+	liveGroup.Delete("/scripture", h.ClearLiveScripture)
 
 	// Admin
 	admin := api.Group("/admin")
@@ -182,7 +193,7 @@ func main() {
 	// Start server
 	log.Printf("Server starting on port %s", port)
 	log.Printf("Backup directory: %s", backupDir)
-	log.Printf("Database connected: %s", dbDSN)
+	log.Printf("Database connected")
 	log.Printf("Typesense host: %s", typesenseHost)
 
 	if err := app.Listen(":" + port); err != nil {

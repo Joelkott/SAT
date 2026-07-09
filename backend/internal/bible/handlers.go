@@ -4,22 +4,30 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// BibleHandler holds the Bible client and provides Fiber route handlers
+// BibleHandler holds the Bible client + local provider and provides Fiber route handlers
 type BibleHandler struct {
 	client *Client
+	local  *LocalProvider
 }
 
-// NewHandler creates a new BibleHandler
-func NewHandler(client *Client) *BibleHandler {
-	return &BibleHandler{client: client}
+// NewHandler creates a new BibleHandler. client may be an unconfigured client
+// (no api.bible key), in which case only the bundled local Bibles are served.
+func NewHandler(client *Client, local *LocalProvider) *BibleHandler {
+	return &BibleHandler{client: client, local: local}
 }
 
-// GetBibles returns all available Bible translations
+// GetBibles returns all available Bible translations: bundled local ones first,
+// then remote api.bible translations when a key is configured.
 // GET /api/bible/bibles
 func (bh *BibleHandler) GetBibles(c *fiber.Ctx) error {
-	bibles, err := bh.client.GetBibles()
-	if err != nil {
-		return c.Status(502).JSON(fiber.Map{"error": "Failed to fetch Bible translations"})
+	bibles := bh.local.Bibles()
+	if bh.client.IsConfigured() {
+		remote, err := bh.client.GetBibles()
+		if err != nil {
+			// Non-fatal: still return the local Bibles so the tab keeps working.
+			return c.JSON(bibles)
+		}
+		bibles = append(bibles, remote...)
 	}
 	return c.JSON(bibles)
 }
@@ -30,6 +38,14 @@ func (bh *BibleHandler) GetBooks(c *fiber.Ctx) error {
 	bibleID := c.Params("bibleId")
 	if bibleID == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "bibleId is required"})
+	}
+
+	if bh.local.Has(bibleID) {
+		books, err := bh.local.GetBooks(bibleID)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Failed to fetch books"})
+		}
+		return c.JSON(books)
 	}
 
 	books, err := bh.client.GetBooks(bibleID)
@@ -48,6 +64,14 @@ func (bh *BibleHandler) GetChapters(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "bibleId and bookId are required"})
 	}
 
+	if bh.local.Has(bibleID) {
+		chapters, err := bh.local.GetChapters(bibleID, bookID)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Failed to fetch chapters"})
+		}
+		return c.JSON(chapters)
+	}
+
 	chapters, err := bh.client.GetChapters(bibleID, bookID)
 	if err != nil {
 		return c.Status(502).JSON(fiber.Map{"error": "Failed to fetch chapters"})
@@ -62,6 +86,14 @@ func (bh *BibleHandler) GetChapter(c *fiber.Ctx) error {
 	chapterID := c.Params("chapterId")
 	if bibleID == "" || chapterID == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "bibleId and chapterId are required"})
+	}
+
+	if bh.local.Has(bibleID) {
+		chapter, err := bh.local.GetChapterContent(bibleID, chapterID)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Failed to fetch chapter content"})
+		}
+		return c.JSON(chapter.Data)
 	}
 
 	chapter, err := bh.client.GetChapterContent(bibleID, chapterID)
@@ -80,6 +112,14 @@ func (bh *BibleHandler) GetVerse(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "bibleId and verseId are required"})
 	}
 
+	if bh.local.Has(bibleID) {
+		verse, err := bh.local.GetVerse(bibleID, verseID)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Failed to fetch verse"})
+		}
+		return c.JSON(verse)
+	}
+
 	verse, err := bh.client.GetVerse(bibleID, verseID)
 	if err != nil {
 		return c.Status(502).JSON(fiber.Map{"error": "Failed to fetch verse"})
@@ -94,6 +134,14 @@ func (bh *BibleHandler) GetPassage(c *fiber.Ctx) error {
 	passageID := c.Params("passageId")
 	if bibleID == "" || passageID == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "bibleId and passageId are required"})
+	}
+
+	if bh.local.Has(bibleID) {
+		passage, err := bh.local.GetPassage(bibleID, passageID)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Failed to fetch passage"})
+		}
+		return c.JSON(passage)
 	}
 
 	passage, err := bh.client.GetPassage(bibleID, passageID)

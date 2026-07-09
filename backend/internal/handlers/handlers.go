@@ -111,9 +111,11 @@ func (h *Handler) UpdateSong(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to update song"})
 	}
 
-	// Update in Typesense
-	if err := h.ts.IndexSong(song); err != nil {
-		log.Printf("Error updating song in Typesense: %v", err)
+	// Update in Typesense (skip if unavailable)
+	if !h.skipTypesense {
+		if err := h.ts.IndexSong(song); err != nil {
+			log.Printf("Error updating song in Typesense: %v", err)
+		}
 	}
 
 	// Check backup threshold
@@ -137,9 +139,11 @@ func (h *Handler) DeleteSong(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "Song not found"})
 	}
 
-	// Delete from Typesense
-	if err := h.ts.DeleteSong(id); err != nil {
-		log.Printf("Error deleting song from Typesense: %v", err)
+	// Delete from Typesense (skip if unavailable)
+	if !h.skipTypesense {
+		if err := h.ts.DeleteSong(id); err != nil {
+			log.Printf("Error deleting song from Typesense: %v", err)
+		}
 	}
 
 	return c.JSON(fiber.Map{"message": "Song deleted successfully"})
@@ -182,6 +186,24 @@ func (h *Handler) SearchSongs(c *fiber.Ctx) error {
 		// Reorder by preference (stable within language)
 		songs = reorderByLanguage(songs, languages)
 
+		return c.JSON(typesense.SearchResult{
+			Songs:      songs,
+			TotalFound: len(songs),
+			SearchTime: 0,
+		})
+	}
+
+	// Typesense unavailable: fall back to database search so live search keeps working.
+	if h.skipTypesense {
+		q := strings.TrimSpace(query)
+		if q == "*" {
+			q = ""
+		}
+		songs, err := h.db.SearchSongs(q, nil)
+		if err != nil {
+			log.Printf("Error searching songs in DB fallback: %v", err)
+			return c.Status(500).JSON(fiber.Map{"error": "Search failed"})
+		}
 		return c.JSON(typesense.SearchResult{
 			Songs:      songs,
 			TotalFound: len(songs),
@@ -274,6 +296,9 @@ func reorderByLanguage(songs []models.Song, preferences []string) []models.Song 
 
 // ReindexAll reindexes all songs from database to Typesense
 func (h *Handler) ReindexAll(c *fiber.Ctx) error {
+	if h.skipTypesense {
+		return c.Status(503).JSON(fiber.Map{"error": "Search indexing unavailable: Typesense is not configured or unreachable"})
+	}
 	songs, err := h.db.GetAllSongs()
 	if err != nil {
 		log.Printf("Error getting songs for reindex: %v", err)
