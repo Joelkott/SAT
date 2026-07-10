@@ -250,11 +250,34 @@ export default function SongsPanel() {
     }
   }, []);
 
+  // Recency history: recently opened songs float to the top of the list.
+  const [openHistory, setOpenHistory] = useState<Record<string, number>>({});
+  useEffect(() => {
+    try {
+      setOpenHistory(JSON.parse(localStorage.getItem('song-open-history') || '{}'));
+    } catch {}
+  }, []);
+  const recordOpen = (songId: string) => {
+    setOpenHistory((prev) => {
+      const next = Object.fromEntries(
+        Object.entries({ ...prev, [songId]: Date.now() })
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 300)
+      );
+      try {
+        localStorage.setItem('song-open-history', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
   const handleSelectSong = (song: Song) => {
     setHoverSong(song);
+    recordOpen(song.id);
   };
 
   const handleSendToLive = async (song: Song) => {
+    recordOpen(song.id);
     setLiveSong(song);
     setSelectedSong(song);
     setShowPreviewModal(false);
@@ -384,9 +407,11 @@ export default function SongsPanel() {
     return ordered;
   };
 
+  // Default list: most recently opened first (stable sort keeps API order
+  // for songs never opened). Search results keep their relevance ranking.
   const displaySongs = searchResults
     ? reorderByLanguageClient(searchResults.songs, selectedLanguages)
-    : songs;
+    : [...songs].sort((a, b) => (openHistory[b.id] || 0) - (openHistory[a.id] || 0));
 
   const handleCloseFullScreen = () => {
     setSelectedSong(null);

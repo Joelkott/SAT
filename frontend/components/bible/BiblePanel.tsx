@@ -21,7 +21,7 @@ import {
   referenceString,
   resolveBookAlias,
 } from '@/components/bible/verseUtils';
-import { PlusIcon, XIcon, ChevronRightIcon, BookOpenIcon } from '@/components/icons';
+import { PlusIcon, XIcon, ChevronRightIcon, BookOpenIcon, PinIcon } from '@/components/icons';
 
 // Language ids whose scripts need taller line boxes (stacked conjuncts).
 const INDIC_LANGS = new Set(['mal', 'hin', 'tam', 'tel', 'kan']);
@@ -325,6 +325,46 @@ export default function BiblePanel() {
     }
   }, []);
 
+  // Recents & pins ----------------------------------------------------------
+  const [recents, setRecents] = useState<string[]>([]);
+  const [pins, setPins] = useState<string[]>([]);
+  useEffect(() => {
+    try { setRecents(JSON.parse(localStorage.getItem('bible-recents') || '[]')); } catch {}
+    try { setPins(JSON.parse(localStorage.getItem('bible-pins') || '[]')); } catch {}
+  }, []);
+
+  // Human-readable reference of what is currently on screen, e.g. "John 3:16-18".
+  const currentReference = useMemo(() => {
+    if (!selectedBook || !selectedChapter) return null;
+    let ref = `${selectedBook.name} ${selectedChapter.number}`;
+    if (selection) {
+      ref += `:${selection.start}${selection.end !== selection.start ? `-${selection.end}` : ''}`;
+    }
+    return ref;
+  }, [selectedBook, selectedChapter, selection]);
+
+  // Record a verse-level view in recents after a 2s dwell, so stepping
+  // through verses with the arrow keys doesn't flood the history.
+  useEffect(() => {
+    if (!currentReference || !selection) return;
+    const t = setTimeout(() => {
+      setRecents((prev) => {
+        const next = [currentReference, ...prev.filter((r) => r !== currentReference)].slice(0, 5);
+        try { localStorage.setItem('bible-recents', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [currentReference, selection]);
+
+  const togglePin = useCallback((ref: string) => {
+    setPins((prev) => {
+      const next = prev.includes(ref) ? prev.filter((r) => r !== ref) : [ref, ...prev].slice(0, 12);
+      try { localStorage.setItem('bible-pins', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   // Team role: media proposes verses, worship gets an accept prompt.
   const [role, setRole] = useState<'media' | 'worship' | 'admin'>('worship');
   useEffect(() => {
@@ -554,6 +594,50 @@ export default function BiblePanel() {
 
       </div>
 
+      {/* Pinned + recent passages */}
+      {(pins.length > 0 || recents.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {pins.map((ref) => (
+            <span
+              key={`pin-${ref}`}
+              className="group flex items-center rounded-full bg-accent/10 border border-accent/40 overflow-hidden"
+            >
+              <button
+                onClick={() => handleReferenceSearch(ref)}
+                title={`Open ${ref}`}
+                className="h-7 pl-2.5 pr-1.5 flex items-center gap-1.5 text-accent-hover hover:text-ink cursor-pointer transition-colors duration-150 text-xs font-medium"
+              >
+                <PinIcon className="w-3 h-3" />
+                {ref}
+              </button>
+              <button
+                onClick={() => togglePin(ref)}
+                title="Unpin"
+                aria-label={`Unpin ${ref}`}
+                className="h-7 pr-2 pl-0.5 flex items-center text-accent-hover/50 hover:text-danger cursor-pointer transition-colors duration-150"
+              >
+                <XIcon className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+          {pins.length > 0 && recents.filter((r) => !pins.includes(r)).length > 0 && (
+            <span className="w-px h-4 bg-edge mx-0.5" aria-hidden />
+          )}
+          {recents
+            .filter((r) => !pins.includes(r))
+            .map((ref) => (
+              <button
+                key={`recent-${ref}`}
+                onClick={() => handleReferenceSearch(ref)}
+                title={`Open ${ref} (recently viewed)`}
+                className="h-7 px-2.5 rounded-full bg-surface-input border border-edge text-ink-dim hover:text-accent-hover hover:border-accent/50 cursor-pointer transition-colors duration-150 text-xs"
+              >
+                {ref}
+              </button>
+            ))}
+        </div>
+      )}
+
       {/* Output actions — visible once a chapter is open, gated by role */}
       {selectedChapter && (
         <div className="flex items-center justify-end gap-2">
@@ -578,6 +662,20 @@ export default function BiblePanel() {
               className="h-9 px-4 rounded-lg border border-edge-strong text-ink-dim hover:text-ink hover:border-accent cursor-pointer text-sm font-medium"
             >
               Send to Display
+            </button>
+          )}
+          {currentReference && (
+            <button
+              onClick={() => togglePin(currentReference)}
+              title={pins.includes(currentReference) ? `Unpin ${currentReference}` : `Pin ${currentReference} for quick access`}
+              className={`h-9 px-3 flex items-center gap-1.5 rounded-lg border cursor-pointer text-sm transition-colors duration-150 ${
+                pins.includes(currentReference)
+                  ? 'bg-accent/10 border-accent/40 text-accent-hover'
+                  : 'border-edge text-ink-mute hover:text-ink hover:border-accent/50'
+              }`}
+            >
+              <PinIcon className="w-3.5 h-3.5" />
+              {pins.includes(currentReference) ? 'Pinned' : 'Pin'}
             </button>
           )}
           <span className="w-px h-5 bg-edge" aria-hidden />
