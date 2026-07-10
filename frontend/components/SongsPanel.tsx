@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { songsApi, Song, SearchResult, propresenterApi, ProPresenterStatus } from '@/lib/api';
+import { songsApi, Song, SearchResult, propresenterApi, ProPresenterStatus, queueApi } from '@/lib/api';
 import SearchBar from '@/components/SearchBar';
 import SongList from '@/components/SongList';
 import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
 import QueuePanel from '@/components/QueuePanel';
-import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon } from '@/components/icons';
+import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon } from '@/components/icons';
 
 export default function SongsPanel() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -27,6 +27,7 @@ export default function SongsPanel() {
   const [ppSyncing, setPpSyncing] = useState(false);
   const [ppSyncEnabled, setPpSyncEnabled] = useState(true);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [queueRefresh, setQueueRefresh] = useState(0);
   const [hoverSong, setHoverSong] = useState<Song | null>(null);
   const [role, setRoleState] = useState('');
   useEffect(() => { setRoleState(localStorage.getItem('sat-role') || ''); }, []);
@@ -265,6 +266,16 @@ export default function SongsPanel() {
     }
   };
 
+  const handleAddToQueue = async (song: Song) => {
+    try {
+      await queueApi.add(song.id);
+      setQueueRefresh((n) => n + 1);
+    } catch (error: any) {
+      console.error('Error adding song to queue:', error);
+      alert(`Failed to add to queue: ${error?.response?.data?.error || error?.message || 'Unknown error'}`);
+    }
+  };
+
   const handleCreateNew = () => {
     setEditingSong(null);
     setShowForm(true);
@@ -452,6 +463,7 @@ export default function SongsPanel() {
               isOpen={queueOpen}
               onToggle={() => setQueueOpen(false)}
               onSongSelect={(song) => handleSendToLive(song)}
+              refreshToken={queueRefresh}
             />
           </div>
         )}
@@ -507,6 +519,7 @@ export default function SongsPanel() {
               onSelectSong={handleSelectSong}
               onEdit={handleEdit}
               onSendToLive={handleSendToLive}
+              onAddToQueue={handleAddToQueue}
               selectedSongId={selectedSong?.id}
               loading={loading}
             />
@@ -689,6 +702,16 @@ export default function SongsPanel() {
                 badgeClass="text-ink-mute"
                 overlay={
                   <>
+                    <button
+                      onClick={() => (hoverSong || selectedSong) && handleSendToLive((hoverSong || selectedSong)!)}
+                      className="h-7 px-2 flex items-center gap-1 rounded text-ok hover:bg-ok/15 cursor-pointer text-xs font-semibold"
+                      aria-label="Send previewed song to live"
+                      title="Go Live"
+                    >
+                      <PlayIcon className="w-3.5 h-3.5" />
+                      Go Live
+                    </button>
+                    <span className="w-px h-4 bg-edge" aria-hidden />
                     <button
                       onClick={() => (hoverSong || selectedSong) && handleEdit((hoverSong || selectedSong)!)}
                       className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink cursor-pointer"

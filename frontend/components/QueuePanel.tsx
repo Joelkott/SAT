@@ -25,6 +25,7 @@ interface QueuePanelProps {
   onToggle: () => void;
   onSongSelect?: (song: Song) => void;
   onQueueChange?: () => void;
+  refreshToken?: number;
 }
 
 interface SortableItemProps {
@@ -110,7 +111,7 @@ function SortableItem({ item, onDelete, onSelect }: SortableItemProps) {
   );
 }
 
-export default function QueuePanel({ isOpen, onToggle, onSongSelect, onQueueChange }: QueuePanelProps) {
+export default function QueuePanel({ isOpen, onToggle, onSongSelect, onQueueChange, refreshToken }: QueuePanelProps) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +143,13 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onQueueChan
       fetchQueue();
     }
   }, [isOpen, fetchQueue]);
+
+  // Re-fetch when an external refresh is requested (e.g. a song was added)
+  useEffect(() => {
+    if (isOpen && refreshToken !== undefined) {
+      fetchQueue();
+    }
+  }, [refreshToken, isOpen, fetchQueue]);
 
   // Poll every 5 seconds
   useEffect(() => {
