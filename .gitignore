@@ -23,6 +23,10 @@ frontend/out/
 frontend/build/
 frontend/dist/
 
+# TypeScript incremental build info
+*.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+
 # Dependencies
 node_modules/
 frontend/node_modules/
