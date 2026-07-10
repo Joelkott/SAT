@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import SongsPanel from '@/components/SongsPanel';
 import BiblePanel from '@/components/bible/BiblePanel';
-import { MusicIcon, BookOpenIcon, MonitorIcon, XIcon, EyeIcon, EyeOffIcon } from '@/components/icons';
+import HelpDialog from '@/components/HelpDialog';
+import { MusicIcon, BookOpenIcon, MonitorIcon, XIcon, EyeIcon, EyeOffIcon, HelpCircleIcon } from '@/components/icons';
 import api from '@/lib/api';
 
 type Tab = 'songs' | 'bible';
@@ -19,6 +20,7 @@ export default function Home() {
   const [role, setRole] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   useEffect(() => {
     if (!localStorage.getItem('sat-token')) window.location.href = '/login';
     else { setAuthed(true); setRole(localStorage.getItem('sat-role') || ''); }
@@ -101,6 +103,16 @@ export default function Home() {
             )}
           </div>
 
+          {/* Help */}
+          <button
+            onClick={() => setShowHelp(true)}
+            title="How to use SAT — shortcuts and tips"
+            aria-label="Open help"
+            className="h-9 w-9 flex items-center justify-center rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer transition-colors duration-150"
+          >
+            <HelpCircleIcon className="w-4 h-4" />
+          </button>
+
           {/* Account menu */}
           <div className="relative">
             <button
@@ -138,6 +150,7 @@ export default function Home() {
       {/* Tab content — both stay mounted so switching tabs never loses the
           live song, Bible position, or refetches the translation catalog. */}
       {showPw && <PasswordManager onClose={() => setShowPw(false)} />}
+      {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
 
       <div className={activeTab === 'songs' ? '' : 'hidden'}>
         <SongsPanel />

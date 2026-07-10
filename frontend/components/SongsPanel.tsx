@@ -170,11 +170,24 @@ export default function SongsPanel() {
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing = !!target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable);
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
-        const target = e.target as HTMLElement | null;
         if (target && (target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
         e.preventDefault();
         sendPreviewToLiveRef.current();
+        return;
+      }
+      // 1-9 loads that queue position into preview
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && /^[1-9]$/.test(e.key) && !typing) {
+        const idx = Number(e.key) - 1;
+        queueApi
+          .getAll()
+          .then((items) => {
+            const song = items[idx]?.song;
+            if (song) setHoverSong(song);
+          })
+          .catch((err) => console.error('Failed to load queue item for shortcut:', err));
       }
     };
     window.addEventListener('keydown', onKey);
