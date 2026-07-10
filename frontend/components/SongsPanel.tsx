@@ -38,6 +38,8 @@ export default function SongsPanel() {
   const rafIdRef = useRef<number | null>(null);
   const previewBoxRef = useRef<HTMLDivElement | null>(null);
   const [previewW, setPreviewW] = useState(0);
+  const [previewZoom, setPreviewZoom] = useState(1.0);
+  const [liveFrac, setLiveFrac] = useState(0.75);
   useEffect(() => {
     const el = previewBoxRef.current;
     if (!el) return;
@@ -569,13 +571,60 @@ export default function SongsPanel() {
             </div>
             )}
 
-            {/* Queue & Preview */}
-            <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-3">
-              <div className="overflow-hidden relative">
-                {(hoverSong || selectedSong) && (
-                  <div className="absolute top-2 right-2 z-10 flex items-center gap-1 bg-black/60 backdrop-blur-sm px-1.5 py-1 rounded-md border border-edge">
+            {/* Live monitor + song preview (drag divider to resize) */}
+            <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-2">
+              {/* LIVE — mirrors the display window; zoom here controls it */}
+              <div style={{ width: `${liveFrac * 100}%` }} className="mx-auto">
+                <SongReplica
+                  song={liveSong}
+                  zoom={zoomLevel}
+                  emptyText="Nothing live"
+                  badge="LIVE"
+                  badgeClass="text-live"
+                  overlay={
+                    <ZoomControls
+                      value={zoomLevel}
+                      onChange={(z) => {
+                        setZoomLevel(z);
+                        displayChannelRef.current?.postMessage({ type: 'zoom', zoomLevel: z });
+                      }}
+                    />
+                  }
+                />
+              </div>
+
+              {/* Divider: drag vertically to resize the live monitor */}
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                title="Drag to resize the live monitor"
+                className="h-1.5 mx-8 rounded-full bg-edge hover:bg-accent/60 cursor-row-resize"
+                onPointerDown={(e) => {
+                  const startY = e.clientY;
+                  const startFrac = liveFrac;
+                  const move = (ev: PointerEvent) => {
+                    setLiveFrac(Math.min(1, Math.max(0.4, startFrac + (ev.clientY - startY) / 300)));
+                  };
+                  const up = () => {
+                    window.removeEventListener('pointermove', move);
+                    window.removeEventListener('pointerup', up);
+                  };
+                  window.addEventListener('pointermove', move);
+                  window.addEventListener('pointerup', up);
+                }}
+              />
+
+              {/* PREVIEW — hover/selected song, local zoom only */}
+              <SongReplica
+                song={hoverSong || selectedSong}
+                zoom={previewZoom}
+                emptyText="Hover or select a song to preview it"
+                badge="PREVIEW"
+                badgeClass="text-ink-mute"
+                overlay={
+                  <>
                     <button
-                      onClick={() => handleEdit((hoverSong || selectedSong)!)}
+                      onClick={() => (hoverSong || selectedSong) && handleEdit((hoverSong || selectedSong)!)}
                       className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink cursor-pointer"
                       aria-label="Edit this song"
                       title="Quick edit"
@@ -583,63 +632,93 @@ export default function SongsPanel() {
                       <PencilIcon className="w-3.5 h-3.5" />
                     </button>
                     <span className="w-px h-4 bg-edge" aria-hidden />
-                    <button
-                      onClick={() => {
-                        const newZoom = Math.max(0.5, zoomLevel - 0.1);
-                        setZoomLevel(newZoom);
-                        displayChannelRef.current?.postMessage({ type: 'zoom', zoomLevel: newZoom });
-                      }}
-                      className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink cursor-pointer"
-                      aria-label="Zoom out"
-                    >
-                      <MinusIcon className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="text-xs text-ink-dim min-w-[2.5rem] text-center tabular-nums">
-                      {Math.round(zoomLevel * 100)}%
-                    </span>
-                    <button
-                      onClick={() => {
-                        const newZoom = Math.min(3.0, zoomLevel + 0.1);
-                        setZoomLevel(newZoom);
-                        displayChannelRef.current?.postMessage({ type: 'zoom', zoomLevel: newZoom });
-                      }}
-                      className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink cursor-pointer"
-                      aria-label="Zoom in"
-                    >
-                      <PlusIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-                <div ref={previewBoxRef} className="bg-black rounded-lg border border-edge overflow-hidden aspect-video w-full relative">
-                {(hoverSong || selectedSong) ? (
-                  /* Faithful replica of the /display window rendered at
-                     1920x1080 and scaled down to fit the panel. */
-                  <div
-                    className="absolute top-0 left-0 overflow-hidden"
-                    style={{ width: 1920, height: 1080, transform: `scale(${previewW / 1920})`, transformOrigin: 'top left' }}
-                  >
-                    <div className="h-full w-full overflow-y-auto p-12">
-                      <div className="min-h-full w-full flex items-center justify-center">
-                      <div style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center' }} className="w-full">
-                        <pre className={`whitespace-pre-wrap text-center w-full text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes(((hoverSong || selectedSong)!.language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}>
-                          {(hoverSong || selectedSong)!.display_lyrics}
-                        </pre>
-                      </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-ink-mute text-center text-xs sm:text-sm">Hover or select a song to preview it</p>
-                  </div>
-                )}
-                </div>
-              </div>
+                    <ZoomControls value={previewZoom} onChange={setPreviewZoom} />
+                  </>
+                }
+              />
             </div>
           </div>
         </div>
         </div>
       </div>
     </>
+  );
+}
+
+// Compact zoom control cluster used by the preview panels.
+function ZoomControls({ value, onChange }: { value: number; onChange: (z: number) => void }) {
+  return (
+    <>
+      <button
+        onClick={() => onChange(Math.max(0.5, value - 0.1))}
+        className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink cursor-pointer"
+        aria-label="Zoom out"
+      >
+        <MinusIcon className="w-3.5 h-3.5" />
+      </button>
+      <span className="text-xs text-ink-dim min-w-[2.5rem] text-center tabular-nums">
+        {Math.round(value * 100)}%
+      </span>
+      <button
+        onClick={() => onChange(Math.min(3.0, value + 0.1))}
+        className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink cursor-pointer"
+        aria-label="Zoom in"
+      >
+        <PlusIcon className="w-3.5 h-3.5" />
+      </button>
+    </>
+  );
+}
+
+// Scaled 1920x1080 replica of the display window.
+function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay }: {
+  song: Song | null;
+  zoom: number;
+  emptyText: string;
+  badge: string;
+  badgeClass: string;
+  overlay: React.ReactNode;
+}) {
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setW(el.offsetWidth));
+    ro.observe(el);
+    setW(el.offsetWidth);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={boxRef} className="bg-black rounded-lg border border-edge overflow-hidden aspect-video w-full relative">
+      <span className={`absolute top-2 left-2 z-10 text-[10px] font-bold tracking-widest bg-black/60 px-1.5 py-0.5 rounded ${badgeClass}`}>
+        {badge}
+      </span>
+      {song && (
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 bg-black/60 backdrop-blur-sm px-1.5 py-1 rounded-md border border-edge">
+          {overlay}
+        </div>
+      )}
+      {song ? (
+        <div
+          className="absolute top-0 left-0 overflow-hidden"
+          style={{ width: 1920, height: 1080, transform: `scale(${w / 1920})`, transformOrigin: 'top left' }}
+        >
+          <div className="h-full w-full overflow-y-auto p-12">
+            <div className="min-h-full w-full flex items-center justify-center">
+              <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} className="w-full">
+                <pre className={`whitespace-pre-wrap text-center w-full text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((song.language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}>
+                  {song.display_lyrics}
+                </pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center h-full">
+          <p className="text-ink-mute text-center text-xs sm:text-sm">{emptyText}</p>
+        </div>
+      )}
+    </div>
   );
 }
