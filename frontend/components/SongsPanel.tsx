@@ -7,7 +7,7 @@ import SongList from '@/components/SongList';
 import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
 import QueuePanel from '@/components/QueuePanel';
-import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon } from '@/components/icons';
+import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon } from '@/components/icons';
 
 export default function SongsPanel() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -575,6 +575,15 @@ export default function SongsPanel() {
                 {(hoverSong || selectedSong) && (
                   <div className="absolute top-2 right-2 z-10 flex items-center gap-1 bg-black/60 backdrop-blur-sm px-1.5 py-1 rounded-md border border-edge">
                     <button
+                      onClick={() => handleEdit((hoverSong || selectedSong)!)}
+                      className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink cursor-pointer"
+                      aria-label="Edit this song"
+                      title="Quick edit"
+                    >
+                      <PencilIcon className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="w-px h-4 bg-edge" aria-hidden />
+                    <button
                       onClick={() => {
                         const newZoom = Math.max(0.5, zoomLevel - 0.1);
                         setZoomLevel(newZoom);
@@ -609,11 +618,13 @@ export default function SongsPanel() {
                     className="absolute top-0 left-0 overflow-hidden"
                     style={{ width: 1920, height: 1080, transform: `scale(${previewW / 1920})`, transformOrigin: 'top left' }}
                   >
-                    <div className="h-full w-full flex items-center justify-center p-12">
-                      <div style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }} className="w-full">
+                    <div className="h-full w-full overflow-y-auto p-12">
+                      <div className="min-h-full w-full flex items-center justify-center">
+                      <div style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center' }} className="w-full">
                         <pre className={`whitespace-pre-wrap text-center w-full text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes(((hoverSong || selectedSong)!.language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}>
                           {(hoverSong || selectedSong)!.display_lyrics}
                         </pre>
+                      </div>
                       </div>
                     </div>
                   </div>
