@@ -375,20 +375,47 @@ export default function BiblePanel() {
   const [suggestion, setSuggestion] = useState<{ reference: string; updated_at: number } | null>(null);
   const seenSuggestionRef = useRef<number>(0);
 
-  // Worship team polls for media-team suggestions.
+  // Media: mirror what worship sends to live. Auto = follow and send to the
+  // wall immediately; off = show a confirmation banner first.
+  const [autoMirror, setAutoMirror] = useState(true);
   useEffect(() => {
-    if (role !== 'worship') return;
+    const v = localStorage.getItem('bible-auto-mirror');
+    if (v !== null) setAutoMirror(v === '1');
+  }, []);
+  const toggleAutoMirror = () => {
+    setAutoMirror((v) => {
+      localStorage.setItem('bible-auto-mirror', v ? '0' : '1');
+      return !v;
+    });
+  };
+
+  // When set, send to the wall as soon as the navigated chapter's content is
+  // loaded (mirroring navigates first, then data arrives async).
+  const pendingWallSendRef = useRef(false);
+
+  // Both teams poll the shared suggestion channel, each listening only for
+  // the other side: worship hears media's proposals, media hears what
+  // worship took live.
+  useEffect(() => {
+    const listenFor = role === 'worship' ? 'media' : role === 'media' ? 'worship' : null;
+    if (!listenFor) return;
     if (seenSuggestionRef.current === 0) seenSuggestionRef.current = Date.now();
     const id = setInterval(async () => {
       try {
         const sug = await liveApi.getSuggestion();
-        if (sug.reference && sug.updated_at > seenSuggestionRef.current) {
+        if (!sug.reference || sug.updated_at <= seenSuggestionRef.current) return;
+        if ((sug.from || 'media') !== listenFor) return;
+        if (role === 'media' && autoMirror) {
+          seenSuggestionRef.current = sug.updated_at;
+          pendingWallSendRef.current = true;
+          handleReferenceSearch(sug.reference);
+        } else {
           setSuggestion({ reference: sug.reference, updated_at: sug.updated_at });
         }
       } catch {}
     }, 3000);
     return () => clearInterval(id);
-  }, [role]);
+  }, [role, autoMirror, handleReferenceSearch]);
 
   // Wall output -------------------------------------------------------------
   const [wallState, setWallState] = useState<'idle' | 'sending' | 'live'>('idle');
@@ -447,12 +474,25 @@ export default function BiblePanel() {
     }
   }, [selectedChapter, buildScriptureColumns, role]);
 
-  // Send the current selection to the same-machine /display window.
+  // Send the current selection to the same-machine /display window. When
+  // worship takes a verse live, publish it so the media machine can mirror.
   const handleSendToDisplay = useCallback(() => {
     const columns = buildScriptureColumns();
     if (columns.length === 0) return;
     displayChannelRef.current?.postMessage({ type: 'scripture', columns });
-  }, [buildScriptureColumns]);
+    if (role === 'worship' && columns[0]) {
+      liveApi.setSuggestion(columns[0].reference, 'worship').catch(() => {});
+    }
+  }, [buildScriptureColumns, role]);
+
+  // Complete a pending mirror: once the navigated chapter's content arrives,
+  // push it to the wall automatically.
+  useEffect(() => {
+    if (!pendingWallSendRef.current || !selectedChapter) return;
+    if (!fullChapters[primaryBibleId]?.content) return;
+    pendingWallSendRef.current = false;
+    handleSendToWall();
+  }, [fullChapters, selectedChapter, primaryBibleId, handleSendToWall]);
 
   const handleClearWall = useCallback(async () => {
     displayChannelRef.current?.postMessage({ type: 'scripture-clear' });
@@ -575,6 +615,26 @@ export default function BiblePanel() {
               </div>
             );
           })}
+          {role === 'media' && (
+            <button
+              onClick={toggleAutoMirror}
+              role="switch"
+              aria-checked={autoMirror}
+              title={
+                autoMirror
+                  ? 'Verses worship takes live are sent to the wall automatically. Click to require confirmation instead.'
+                  : 'Verses worship takes live show a confirmation prompt first. Click to mirror automatically.'
+              }
+              className={`h-9 px-3 flex items-center gap-2 rounded-lg border cursor-pointer text-sm font-medium transition-colors duration-150 ${
+                autoMirror
+                  ? 'bg-ok/10 border-ok/40 text-ok'
+                  : 'bg-surface-input border-edge text-ink-dim hover:text-ink hover:border-edge-strong'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${autoMirror ? 'bg-ok animate-pulse' : 'bg-edge-strong'}`} />
+              {autoMirror ? 'Auto-mirror' : 'Mirror: confirm'}
+            </button>
+          )}
           {selectedBibleIds.length < MAX_COLUMNS && (
             <button
               onClick={handleAddSlot}
@@ -682,6 +742,34 @@ export default function BiblePanel() {
             className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 cursor-pointer text-sm"
           >
             Clear
+          </button>
+        </div>
+      )}
+
+      {/* Worship went live — media confirms the mirror (auto-mirror off) */}
+      {role === 'media' && suggestion && (
+        <div className="fade-swap flex items-center gap-3 bg-live/10 border border-live/40 rounded-lg px-4 py-2.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulse shrink-0" />
+          <p className="text-sm text-ink flex-1">
+            Worship is live with <span className="font-semibold text-accent-hover">{suggestion.reference}</span>
+          </p>
+          <button
+            onClick={() => {
+              seenSuggestionRef.current = suggestion.updated_at;
+              pendingWallSendRef.current = true;
+              handleReferenceSearch(suggestion.reference);
+              setSuggestion(null);
+            }}
+            className="h-8 px-3.5 rounded-md bg-accent-deep hover:bg-accent text-on-accent text-sm font-semibold cursor-pointer transition-colors duration-150"
+          >
+            Mirror to Wall
+          </button>
+          <button
+            onClick={() => { seenSuggestionRef.current = suggestion.updated_at; setSuggestion(null); }}
+            aria-label="Dismiss"
+            className="p-1.5 rounded-md text-ink-mute hover:text-ink hover:bg-surface-hover cursor-pointer transition-colors duration-150"
+          >
+            <XIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
