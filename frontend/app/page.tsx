@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import SongsPanel from '@/components/SongsPanel';
 import BiblePanel from '@/components/bible/BiblePanel';
-import { MusicIcon, BookOpenIcon, MonitorIcon, XIcon } from '@/components/icons';
+import { MusicIcon, BookOpenIcon, MonitorIcon, XIcon, EyeIcon, EyeOffIcon } from '@/components/icons';
 import api from '@/lib/api';
 
 type Tab = 'songs' | 'bible';
@@ -128,6 +128,7 @@ export default function Home() {
 function PasswordManager({ onClose }: { onClose: () => void }) {
   const [values, setValues] = useState<Record<string, string>>({ admin: '', media: '', worship: '' });
   const [status, setStatus] = useState<Record<string, string>>({});
+  const [show, setShow] = useState<Record<string, boolean>>({});
 
   const save = async (user: string) => {
     if ((values[user] || '').length < 6) {
@@ -158,13 +159,23 @@ function PasswordManager({ onClose }: { onClose: () => void }) {
         {(['admin', 'media', 'worship'] as const).map((user) => (
           <div key={user} className="flex items-center gap-2">
             <span className="w-20 text-sm font-medium text-ink-dim capitalize shrink-0">{user}</span>
-            <input
-              type="password"
-              value={values[user]}
-              onChange={(e) => setValues((v) => ({ ...v, [user]: e.target.value }))}
-              placeholder="New password"
-              className="flex-1 min-w-0 px-3 py-2 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute text-sm"
-            />
+            <div className="relative flex-1 min-w-0">
+              <input
+                type={show[user] ? 'text' : 'password'}
+                value={values[user]}
+                onChange={(e) => setValues((v) => ({ ...v, [user]: e.target.value }))}
+                placeholder="New password"
+                className="w-full pl-3 pr-9 py-2 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => setShow((v) => ({ ...v, [user]: !v[user] }))}
+                aria-label={show[user] ? 'Hide password' : 'Show password'}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-ink-mute hover:text-ink cursor-pointer"
+              >
+                {show[user] ? <EyeOffIcon className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
+              </button>
+            </div>
             <button
               onClick={() => save(user)}
               className="h-9 px-3 rounded-lg bg-accent-deep hover:bg-accent text-on-accent text-sm font-semibold cursor-pointer shrink-0"

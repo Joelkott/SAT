@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import api from '@/lib/api';
-import { BookOpenIcon } from '@/components/icons';
+import { BookOpenIcon, EyeIcon, EyeOffIcon } from '@/components/icons';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPw, setShowPw] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,14 +53,24 @@ export default function LoginPage() {
         </div>
         <div>
           <label htmlFor="p" className="block text-sm font-medium text-ink-dim mb-1.5">Password</label>
-          <input
-            id="p"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            className="w-full px-4 py-2.5 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none"
-          />
+          <div className="relative">
+            <input
+              id="p"
+              type={showPw ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              className="w-full pl-4 pr-11 py-2.5 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((v) => !v)}
+              aria-label={showPw ? 'Hide password' : 'Show password'}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-ink-mute hover:text-ink cursor-pointer"
+            >
+              {showPw ? <EyeOffIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
         {error && (
           <p role="alert" className="text-danger text-sm bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">{error}</p>
