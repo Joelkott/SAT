@@ -561,54 +561,36 @@ export default function SongsPanel() {
 
             {/* Queue & Preview */}
             <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-3">
-              <div className="bg-surface-sunken rounded-lg p-3 flex items-center gap-3 border border-edge">
-                <div className="w-10 h-10 rounded-lg bg-surface-hover border border-edge flex items-center justify-center text-ink-mute">
-                  <MusicIcon className="w-5 h-5" />
-                </div>
-                <div className="flex-1 text-ink-dim text-sm font-semibold">
-                  Preview
-                </div>
-                {selectedSong && (
-                  <div className="flex items-center gap-2">
-                    {/* Zoom Controls */}
-                    <div className="flex items-center gap-1 bg-surface-raised px-1.5 py-1 rounded-md border border-edge">
-                      <button
-                        onClick={() => {
-                          const newZoom = Math.max(0.5, zoomLevel - 0.1);
-                          setZoomLevel(newZoom);
-                          displayChannelRef.current?.postMessage({
-                            type: 'zoom',
-                            zoomLevel: newZoom,
-                          });
-                        }}
-                        className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer transition-colors duration-150"
-                        aria-label="Zoom out"
-                      >
-                        <MinusIcon className="w-3.5 h-3.5" />
-                      </button>
-                      <span className="text-xs text-ink-dim min-w-[2.5rem] text-center tabular-nums">
-                        {Math.round(zoomLevel * 100)}%
-                      </span>
-                      <button
-                        onClick={() => {
-                          const newZoom = Math.min(3.0, zoomLevel + 0.1);
-                          setZoomLevel(newZoom);
-                          displayChannelRef.current?.postMessage({
-                            type: 'zoom',
-                            zoomLevel: newZoom,
-                          });
-                        }}
-                        className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer transition-colors duration-150"
-                        aria-label="Zoom in"
-                      >
-                        <PlusIcon className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+              <div className="overflow-hidden relative">
+                {(hoverSong || selectedSong) && (
+                  <div className="absolute top-2 right-2 z-10 flex items-center gap-1 bg-black/60 backdrop-blur-sm px-1.5 py-1 rounded-md border border-edge">
+                    <button
+                      onClick={() => {
+                        const newZoom = Math.max(0.5, zoomLevel - 0.1);
+                        setZoomLevel(newZoom);
+                        displayChannelRef.current?.postMessage({ type: 'zoom', zoomLevel: newZoom });
+                      }}
+                      className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink cursor-pointer"
+                      aria-label="Zoom out"
+                    >
+                      <MinusIcon className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-xs text-ink-dim min-w-[2.5rem] text-center tabular-nums">
+                      {Math.round(zoomLevel * 100)}%
+                    </span>
+                    <button
+                      onClick={() => {
+                        const newZoom = Math.min(3.0, zoomLevel + 0.1);
+                        setZoomLevel(newZoom);
+                        displayChannelRef.current?.postMessage({ type: 'zoom', zoomLevel: newZoom });
+                      }}
+                      className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink cursor-pointer"
+                      aria-label="Zoom in"
+                    >
+                      <PlusIcon className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
-              </div>
-
-              <div className="overflow-hidden">
                 <div className="bg-black rounded-lg border border-edge overflow-hidden flex flex-col aspect-video w-full">
                 {(hoverSong || selectedSong) ? (
                   <div

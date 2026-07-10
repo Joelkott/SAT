@@ -40,7 +40,6 @@ export default function SongList({ songs, onSelectSong, selectedSongId, loading,
             <div
               key={song.id}
               onMouseEnter={() => onHover?.(song)}
-              onMouseLeave={() => onHover?.(null)}
               className={`w-full text-left p-4 flex items-start gap-3 transition-colors duration-150 border-l-2 ${
                 selected
                   ? 'bg-surface-hover border-l-accent'
