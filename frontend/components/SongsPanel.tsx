@@ -392,7 +392,7 @@ export default function SongsPanel() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-6 py-6 flex gap-5 items-start">
+      <div className={`${queueOpen ? 'w-full' : 'max-w-7xl mx-auto'} px-6 py-6 flex gap-5 items-start`}>
         {/* Queue pushes content right instead of overlaying it */}
         {queueOpen && (
           <div className="w-[300px] shrink-0 self-stretch sticky top-20 max-h-[calc(100vh-120px)]">
