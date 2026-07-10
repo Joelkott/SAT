@@ -181,10 +181,21 @@ func (db *DB) SearchSongs(query string, languages []string) ([]models.Song, erro
 	args := []interface{}{}
 	argPos := 1
 
+	orderBy := " ORDER BY updated_at DESC"
 	if query != "" && query != "*" {
-		base += fmt.Sprintf(" AND (title ILIKE $%d OR artist ILIKE $%d OR display_lyrics ILIKE $%d OR music_ministry_lyrics ILIKE $%d)", argPos, argPos, argPos, argPos)
+		contains := argPos
+		base += fmt.Sprintf(" AND (title ILIKE $%d OR artist ILIKE $%d OR display_lyrics ILIKE $%d OR music_ministry_lyrics ILIKE $%d)", contains, contains, contains, contains)
 		args = append(args, "%"+query+"%")
 		argPos++
+		prefix := argPos
+		args = append(args, query+"%")
+		argPos++
+		// Rank title matches above everything else: title starting with the
+		// query first, then title containing it, then artist, then lyrics.
+		orderBy = fmt.Sprintf(
+			" ORDER BY CASE WHEN title ILIKE $%d THEN 0 WHEN title ILIKE $%d THEN 1 WHEN artist ILIKE $%d THEN 2 ELSE 3 END, title ASC",
+			prefix, contains, contains,
+		)
 	}
 
 	if len(languages) > 0 {
@@ -193,7 +204,7 @@ func (db *DB) SearchSongs(query string, languages []string) ([]models.Song, erro
 		argPos++
 	}
 
-	base += " ORDER BY updated_at DESC"
+	base += orderBy
 
 	rows, err := db.Query(base, args...)
 	if err != nil {
