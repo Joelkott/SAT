@@ -40,6 +40,7 @@ export default function SongsPanel() {
   const [previewW, setPreviewW] = useState(0);
   const [previewZoom, setPreviewZoom] = useState(1.0);
   const [liveFrac, setLiveFrac] = useState(0.55);
+  const [liveScrollPct, setLiveScrollPct] = useState<number | null>(null);
   useEffect(() => {
     const saved = Number(localStorage.getItem('live-monitor-frac'));
     if (saved >= 0.4 && saved <= 1) setLiveFrac(saved);
@@ -120,6 +121,12 @@ export default function SongsPanel() {
   // Init broadcast channel for display window
   useEffect(() => {
     const channel = new BroadcastChannel('lyrics-display');
+    channel.onmessage = (event) => {
+      const data = event.data;
+      if (data?.type === 'scroll' && typeof data.scrollPercent === 'number') {
+        setLiveScrollPct(data.scrollPercent);
+      }
+    };
     displayChannelRef.current = channel;
     return () => {
       channel.close();
@@ -564,6 +571,7 @@ export default function SongsPanel() {
                   onScrollPercent={(pct) =>
                     displayChannelRef.current?.postMessage({ type: 'scroll', scrollPercent: pct })
                   }
+                  scrollPercent={liveScrollPct}
                   badge="LIVE"
                   badgeClass="text-live"
                   overlay={
@@ -658,7 +666,7 @@ function ZoomControls({ value, onChange }: { value: number; onChange: (z: number
 }
 
 // Scaled 1920x1080 replica of the display window.
-function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay, onScrollPercent }: {
+function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay, onScrollPercent, scrollPercent }: {
   song: Song | null;
   zoom: number;
   emptyText: string;
@@ -666,9 +674,22 @@ function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay, onScro
   badgeClass: string;
   overlay: React.ReactNode;
   onScrollPercent?: (p: number) => void;
+  scrollPercent?: number | null;
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const suppressUntil = useRef(0);
   const [w, setW] = useState(0);
+  // Apply remote scroll without re-broadcasting it.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (scrollPercent == null || !el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    if (max > 0) {
+      suppressUntil.current = Date.now() + 200;
+      el.scrollTop = scrollPercent * max;
+    }
+  }, [scrollPercent]);
   useEffect(() => {
     const el = boxRef.current;
     if (!el) return;
@@ -693,8 +714,10 @@ function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay, onScro
           style={{ width: 1920, height: 1080, transform: `scale(${w / 1920})`, transformOrigin: 'top left' }}
         >
           <div
+            ref={scrollRef}
             className="h-full w-full overflow-y-auto p-12"
             onScroll={onScrollPercent ? (e) => {
+              if (Date.now() < suppressUntil.current) return;
               const t = e.currentTarget;
               const max = t.scrollHeight - t.clientHeight;
               if (max > 0) onScrollPercent(Math.max(0, Math.min(1, t.scrollTop / max)));
