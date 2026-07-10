@@ -36,6 +36,16 @@ export default function SongsPanel() {
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const leftWidthRef = useRef(0.6);
   const rafIdRef = useRef<number | null>(null);
+  const previewBoxRef = useRef<HTMLDivElement | null>(null);
+  const [previewW, setPreviewW] = useState(0);
+  useEffect(() => {
+    const el = previewBoxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setPreviewW(el.offsetWidth));
+    ro.observe(el);
+    setPreviewW(el.offsetWidth);
+    return () => ro.disconnect();
+  }, []);
 
   // Load all songs on mount
   useEffect(() => {
@@ -591,39 +601,17 @@ export default function SongsPanel() {
                     </button>
                   </div>
                 )}
-                <div className="bg-black rounded-lg border border-edge overflow-hidden flex flex-col aspect-video w-full">
+                <div ref={previewBoxRef} className="bg-black rounded-lg border border-edge overflow-hidden aspect-video w-full relative">
                 {(hoverSong || selectedSong) ? (
+                  /* Faithful replica of the /display window rendered at
+                     1920x1080 and scaled down to fit the panel. */
                   <div
-                    id="preview-scroll-container"
-                    className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-12"
-                    onScroll={(e) => {
-                      if (!displayChannelRef.current) return;
-
-                      const target = e.currentTarget;
-                      const scrollTop = target.scrollTop;
-                      const scrollHeight = target.scrollHeight;
-                      const clientHeight = target.clientHeight;
-                      const maxScroll = scrollHeight - clientHeight;
-
-                      if (maxScroll > 0) {
-                        const scrollPercent = Math.max(0, Math.min(1, scrollTop / maxScroll));
-                        try {
-                          displayChannelRef.current.postMessage({
-                            type: 'scroll',
-                            scrollPercent: scrollPercent,
-                          });
-                        } catch (err) {
-                          console.error('Error sending scroll message:', err);
-                        }
-                      }
-                    }}
+                    className="absolute top-0 left-0 overflow-hidden"
+                    style={{ width: 1920, height: 1080, transform: `scale(${previewW / 1920})`, transformOrigin: 'top left' }}
                   >
-                    <div
-                      className="w-full max-w-4xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl mx-auto"
-                      style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center' }}
-                    >
-                      <div className="flex items-center min-h-full py-8">
-                        <pre className="whitespace-pre-wrap text-center w-full text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl leading-relaxed text-white">
+                    <div className="h-full w-full flex items-center justify-center p-12">
+                      <div style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }} className="w-full">
+                        <pre className={`whitespace-pre-wrap text-center w-full text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes(((hoverSong || selectedSong)!.language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}>
                           {(hoverSong || selectedSong)!.display_lyrics}
                         </pre>
                       </div>
