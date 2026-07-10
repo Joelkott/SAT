@@ -497,15 +497,6 @@ export default function SongsPanel() {
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={() => {
-                    window.open('/display', '_blank', 'noopener,noreferrer');
-                  }}
-                  className="flex items-center gap-2 px-3 py-2 rounded-md border border-edge-strong text-ink-dim hover:text-ink hover:border-accent hover:bg-accent/10 cursor-pointer transition-colors duration-150 text-sm shrink-0"
-                >
-                  <MonitorIcon className="w-4 h-4" />
-                  Display
-                </button>
               </div>
             </div>
 

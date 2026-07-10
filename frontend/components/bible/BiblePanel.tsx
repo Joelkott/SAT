@@ -552,39 +552,44 @@ export default function BiblePanel() {
           )}
         </div>
 
-        <div className="hidden lg:block w-px self-stretch bg-edge" aria-hidden />
+      </div>
 
-        {/* LED wall output controls */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleSendToWall}
-            disabled={!selectedChapter || wallState === 'sending'}
-            title="Send the current passage to the /output/bible wall page"
-            className="h-9 px-4 flex items-center gap-2 rounded-lg bg-accent-deep hover:bg-accent text-on-accent font-semibold text-sm cursor-pointer transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {wallState === 'live' && <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulse" />}
-            {wallState === 'sending' ? 'Sending…' : wallState === 'live' ? 'Update Wall' : 'Send to Wall'}
-          </button>
-          <button
-            onClick={handleSendToDisplay}
-            disabled={!selectedChapter}
-            title="Send the current passage to the display window (same machine)"
-            className="h-9 px-3 rounded-lg border border-edge-strong text-ink-dim hover:text-ink hover:border-accent cursor-pointer transition-colors duration-150 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Display
-          </button>
-          <span className="px-2.5 h-7 flex items-center rounded-md bg-surface-sunken border border-edge text-xs font-medium capitalize text-ink-mute" title="Signed-in team">
+      {/* Output actions — visible once a chapter is open, gated by role */}
+      {selectedChapter && (
+        <div className="flex items-center justify-end gap-2">
+          <span className="px-2.5 h-7 flex items-center rounded-md bg-surface-sunken border border-edge text-xs font-medium capitalize text-ink-mute mr-auto" title="Signed-in team">
             {role}
           </span>
+          {(role === 'media' || role === 'admin') && (
+            <button
+              onClick={handleSendToWall}
+              disabled={wallState === 'sending'}
+              title="Send the current passage to the Resolume wall (and display)"
+              className="h-9 px-4 flex items-center gap-2 rounded-lg bg-accent-deep hover:bg-accent text-on-accent font-semibold text-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-accent/10"
+            >
+              {wallState === 'live' && <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulse" />}
+              {wallState === 'sending' ? 'Sending…' : wallState === 'live' ? 'Update Wall' : 'Send to Wall'}
+            </button>
+          )}
+          {(role === 'worship' || role === 'admin') && (
+            <button
+              onClick={handleSendToDisplay}
+              title="Send the current passage to the display window"
+              className="h-9 px-4 rounded-lg border border-edge-strong text-ink-dim hover:text-ink hover:border-accent cursor-pointer text-sm font-medium"
+            >
+              Send to Display
+            </button>
+          )}
+          <span className="w-px h-5 bg-edge" aria-hidden />
           <button
             onClick={handleClearWall}
-            title="Clear scripture from the wall and display outputs"
-            className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 cursor-pointer transition-colors duration-150 text-sm"
+            title="Clear scripture from all outputs"
+            className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 cursor-pointer text-sm"
           >
             Clear
           </button>
         </div>
-      </div>
+      )}
 
       {/* Media-team verse suggestion */}
       {role === 'worship' && suggestion && (

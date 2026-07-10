@@ -18,6 +18,7 @@ export default function Home() {
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
     if (!localStorage.getItem('sat-token')) window.location.href = '/login';
     else { setAuthed(true); setRole(localStorage.getItem('sat-role') || ''); }
@@ -84,30 +85,61 @@ export default function Home() {
             <BookOpenIcon className="w-4 h-4" />
             <span className="hidden sm:inline">Resolume</span>
           </button>
-          {role === 'admin' && (
+          {/* Outputs: role-gated */}
+          <div className="flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5">
+            {(role === 'worship' || role === 'admin') && (
+              <button
+                onClick={() => window.open('/display', '_blank', 'noopener,noreferrer')}
+                title="Open the congregation display window"
+                className="flex items-center gap-2 h-8 px-3 rounded-[7px] text-sm font-medium text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+              >
+                <MonitorIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Display</span>
+              </button>
+            )}
+            {(role === 'media' || role === 'admin') && (
+              <button
+                onClick={() => window.open('/output/bible', '_blank', 'noopener,noreferrer')}
+                title="Open the Resolume/LED-wall capture page"
+                className="flex items-center gap-2 h-8 px-3 rounded-[7px] text-sm font-medium text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+              >
+                <BookOpenIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Resolume</span>
+              </button>
+            )}
+          </div>
+
+          {/* Account menu */}
+          <div className="relative">
             <button
-              onClick={() => setShowPw(true)}
-              title="Manage team passwords"
-              className="h-9 px-3 rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-accent cursor-pointer text-sm"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-expanded={menuOpen}
+              className="flex items-center gap-2 h-9 px-3 rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer text-sm capitalize"
             >
-              Passwords
+              <span className="w-6 h-6 rounded-full bg-accent/15 text-accent-hover text-xs font-bold flex items-center justify-center uppercase">
+                {role.slice(0, 1) || '?'}
+              </span>
+              <span className="hidden sm:inline">{role}</span>
             </button>
-          )}
-          <button
-            onClick={() => { localStorage.removeItem('sat-token'); localStorage.removeItem('sat-role'); window.location.href = '/login'; }}
-            title="Sign out"
-            className="h-9 px-3 rounded-lg text-ink-mute hover:text-danger cursor-pointer text-sm"
-          >
-            Sign out
-          </button>
-          <button
-            onClick={() => window.open('/display', '_blank', 'noopener,noreferrer')}
-            title="Open the congregation display window"
-            className="flex items-center gap-2 h-9 px-3.5 rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-accent hover:bg-accent/10 cursor-pointer transition-colors duration-150 text-sm font-medium shrink-0"
-          >
-            <MonitorIcon className="w-4 h-4" />
-            <span className="hidden sm:inline">Display</span>
-          </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-11 z-50 w-44 bg-surface-raised border border-edge rounded-xl shadow-2xl p-1.5 fade-swap">
+                {role === 'admin' && (
+                  <button
+                    onClick={() => { setShowPw(true); setMenuOpen(false); }}
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+                  >
+                    Team passwords
+                  </button>
+                )}
+                <button
+                  onClick={() => { localStorage.removeItem('sat-token'); localStorage.removeItem('sat-role'); window.location.href = '/login'; }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-sm text-danger hover:bg-danger/10 cursor-pointer"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
