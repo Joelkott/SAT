@@ -126,6 +126,7 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -211,15 +212,12 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
   };
 
   const handleClearAll = async () => {
-    if (!confirm('Clear all items from the queue?')) {
-      return;
-    }
-
     try {
       setLoading(true);
       setError(null);
       await queueApi.clear();
       await fetchQueue();
+      setConfirmClear(false);
     } catch (err) {
       console.error('Failed to clear queue:', err);
       setError('Failed to clear queue');
@@ -306,13 +304,36 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
         {/* Footer */}
         {queue.length > 0 && (
           <div className="p-3 border-t border-edge">
-            <button
-              onClick={handleClearAll}
-              disabled={loading}
-              className="w-full px-4 py-2 rounded-lg border border-danger/40 text-danger hover:bg-danger/10 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium cursor-pointer transition-colors duration-150"
-            >
-              {loading ? 'Clearing…' : 'Clear all'}
-            </button>
+            {confirmClear ? (
+              <div className="space-y-2 fade-swap">
+                <p className="text-sm text-ink-dim text-center">
+                  Remove all {queue.length} {queue.length === 1 ? 'song' : 'songs'} from the queue?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleClearAll}
+                    disabled={loading}
+                    className="flex-1 px-4 py-2 rounded-lg bg-danger hover:bg-danger/85 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold cursor-pointer transition-colors duration-150"
+                  >
+                    {loading ? 'Clearing…' : 'Clear all'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmClear(false)}
+                    disabled={loading}
+                    className="flex-1 px-4 py-2 rounded-lg border border-edge-strong text-ink-dim hover:text-ink hover:bg-surface-hover text-sm font-medium cursor-pointer transition-colors duration-150"
+                  >
+                    Keep
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmClear(true)}
+                className="w-full px-4 py-2 rounded-lg border border-danger/40 text-danger hover:bg-danger/10 text-sm font-medium cursor-pointer transition-colors duration-150"
+              >
+                Clear all
+              </button>
+            )}
           </div>
         )}
       </div>

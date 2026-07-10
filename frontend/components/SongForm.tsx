@@ -11,6 +11,11 @@ interface SongFormProps {
 
 const LANGUAGES = ['english', 'malayalam', 'hindi', 'tamil', 'telugu', 'kannada'];
 
+const inputClass =
+  'w-full px-3.5 py-2.5 bg-surface-input text-ink text-sm border border-edge rounded-lg ' +
+  'hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute ' +
+  'transition-colors duration-150';
+
 export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
@@ -33,7 +38,7 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
     setError('');
 
     if (!title.trim() || !lyrics.trim() || !language) {
-      setError('Title, lyrics, and language are required');
+      setError('Title and lyrics are required.');
       return;
     }
 
@@ -66,109 +71,111 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
 
       onSubmit();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to save song');
+      setError(err.response?.data?.error || 'Failed to save song. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div>
+  const indic = ['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes(language);
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Title */}
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Song details */}
+      <div className="space-y-4">
         <div>
-          <label htmlFor="title" className="block text-sm font-medium text-ink-dim mb-2">
-            Title *
+          <label htmlFor="title" className="block text-sm font-medium text-ink-dim mb-1.5">
+            Title <span className="text-danger" aria-hidden>*</span>
           </label>
           <input
             id="title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150"
-            placeholder="Enter song title"
+            className={inputClass}
+            placeholder="Song title"
+            autoComplete="off"
             required
           />
         </div>
 
-        {/* Artist */}
-        <div>
-          <label htmlFor="artist" className="block text-sm font-medium text-ink-dim mb-2">
-            Artist (Optional)
-          </label>
-          <input
-            id="artist"
-            type="text"
-            value={artist}
-            onChange={(e) => setArtist(e.target.value)}
-            className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150"
-            placeholder="Enter artist name"
-          />
-        </div>
-
-        {/* Language */}
-        <div>
-          <label htmlFor="language" className="block text-sm font-medium text-ink-dim mb-2">
-            Language *
-          </label>
-          <select
-            id="language"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150"
-            required
-          >
-            {LANGUAGES.map((lang) => (
-              <option key={lang} value={lang}>
-                {lang.charAt(0).toUpperCase() + lang.slice(1)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Lyrics */}
-        <div>
-          <label htmlFor="lyrics" className="block text-sm font-medium text-ink-dim mb-2">
-            Lyrics *
-          </label>
-          <textarea
-            id="lyrics"
-            value={lyrics}
-            onChange={(e) => setLyrics(e.target.value)}
-            rows={14}
-            className="w-full px-4 py-3 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150 font-mono text-sm"
-            placeholder={"[Verse 1]\nEnter song lyrics..."}
-            required
-          />
-        </div>
-
-        {/* Error message */}
-        {error && (
-          <div className="bg-danger/10 border border-danger/30 rounded-lg p-4" role="alert">
-            <p className="text-danger text-sm">{error}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="artist" className="block text-sm font-medium text-ink-dim mb-1.5">
+              Artist <span className="text-ink-mute font-normal">(optional)</span>
+            </label>
+            <input
+              id="artist"
+              type="text"
+              value={artist}
+              onChange={(e) => setArtist(e.target.value)}
+              className={inputClass}
+              placeholder="Artist or band"
+              autoComplete="off"
+            />
           </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-3 pt-4">
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex-1 bg-accent-deep hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed text-on-accent font-semibold py-3 px-4 rounded-lg cursor-pointer transition-colors duration-150"
-          >
-            {loading ? 'Saving...' : song ? 'Update Song' : 'Create Song'}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={loading}
-            className="flex-1 bg-surface-hover hover:bg-edge text-ink-dim hover:text-ink font-semibold py-3 px-4 rounded-lg cursor-pointer transition-colors duration-150 border border-edge-strong"
-          >
-            Cancel
-          </button>
+          <div>
+            <label htmlFor="language" className="block text-sm font-medium text-ink-dim mb-1.5">
+              Language <span className="text-danger" aria-hidden>*</span>
+            </label>
+            <select id="language" value={language} onChange={(e) => setLanguage(e.target.value)} className={`${inputClass} capitalize`} required>
+              {LANGUAGES.map((lang) => (
+                <option key={lang} value={lang} className="capitalize">
+                  {lang.charAt(0).toUpperCase() + lang.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-      </form>
-    </div>
+      </div>
+
+      {/* Lyrics — the main event */}
+      <div>
+        <div className="flex items-baseline justify-between mb-1.5">
+          <label htmlFor="lyrics" className="text-sm font-medium text-ink-dim">
+            Lyrics <span className="text-danger" aria-hidden>*</span>
+          </label>
+          <span className="text-xs text-ink-mute">
+            Label sections like <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">[Verse 1]</code>{' '}
+            <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">[Chorus]</code>
+          </span>
+        </div>
+        <textarea
+          id="lyrics"
+          value={lyrics}
+          onChange={(e) => setLyrics(e.target.value)}
+          rows={16}
+          className={`${inputClass} resize-y min-h-[16rem] leading-relaxed ${indic ? 'script-indic text-base' : ''}`}
+          placeholder={'[Verse 1]\nEnter the lyrics…\n\n[Chorus]\n…'}
+          required
+        />
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-start gap-2 bg-danger/10 border border-danger/30 rounded-lg px-3.5 py-2.5" role="alert">
+          <span className="text-danger text-sm">{error}</span>
+        </div>
+      )}
+
+      {/* Actions — one primary, one quiet */}
+      <div className="flex items-center justify-end gap-3 pt-1">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={loading}
+          className="px-5 py-2.5 rounded-lg text-sm font-medium text-ink-dim hover:text-ink hover:bg-surface-hover border border-transparent hover:border-edge cursor-pointer transition-colors duration-150 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={loading}
+          className="px-6 py-2.5 rounded-lg bg-accent-deep hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed text-on-accent text-sm font-semibold cursor-pointer transition-colors duration-150"
+        >
+          {loading ? 'Saving…' : song ? 'Save changes' : 'Create song'}
+        </button>
+      </div>
+    </form>
   );
 }
