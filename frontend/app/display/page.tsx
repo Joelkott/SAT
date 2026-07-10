@@ -19,7 +19,6 @@ export default function Display() {
   const [scripture, setScripture] = useState<ScriptureColumn[] | null>(null);
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
   const [scrollPct, setScrollPct] = useState<number | null>(null);
-  const channelRef = useRef<BroadcastChannel | null>(null);
 
   // Restore alignment preference
   useEffect(() => {
@@ -109,7 +108,6 @@ export default function Display() {
   // Listen for broadcasts from the control window
   useEffect(() => {
     const channel = new BroadcastChannel('lyrics-display');
-    channelRef.current = channel;
     channel.onmessage = (event) => {
       const data = event.data;
       if (data?.type === 'song' && data.song) {
@@ -237,9 +235,7 @@ export default function Display() {
           })}
         </div>
       ) : song ? (
-        <SplitLyricsView lyrics={song.display_lyrics} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} scrollPercent={scrollPct}
-          onScrollPercent={(pct) => channelRef.current?.postMessage({ type: 'scroll', scrollPercent: pct })}
-        />
+        <SplitLyricsView lyrics={song.display_lyrics} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} scrollPercent={scrollPct} />
       ) : (
         <div className="h-full w-full flex items-center justify-center">
           <div className="text-center">

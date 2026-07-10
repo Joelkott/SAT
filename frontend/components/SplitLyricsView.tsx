@@ -8,7 +8,6 @@ interface SplitLyricsViewProps {
   language?: string;
   textAlign?: 'left' | 'center' | 'right';
   scrollPercent?: number | null;
-  onScrollPercent?: (p: number) => void;
 }
 
 interface Pane {
@@ -18,7 +17,7 @@ interface Pane {
 
 const MIN_PANE_HEIGHT = 5; // Minimum 5% height per pane
 
-export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign = 'center', scrollPercent, onScrollPercent }: SplitLyricsViewProps) {
+export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign = 'center', scrollPercent }: SplitLyricsViewProps) {
   const [panes, setPanes] = useState<Pane[]>([
     { id: '1', heightPercent: 100 },
   ]);
@@ -36,10 +35,8 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
 
   // Remove a split (can go down to 1 pane)
   // Remote scroll sync: control window drives pane scroll position.
-  const suppressUntil = useRef(0);
   useEffect(() => {
     if (scrollPercent == null || !containerRef.current) return;
-    suppressUntil.current = Date.now() + 200;
     containerRef.current.querySelectorAll<HTMLElement>('[data-pane-scroll]').forEach((el) => {
       const max = el.scrollHeight - el.clientHeight;
       if (max > 0) el.scrollTop = scrollPercent * max;
@@ -215,14 +212,7 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
         <div key={pane.id} className="contents">
           {/* Pane */}
           <div
-            data-pane-scroll
-            onScroll={onScrollPercent ? (e) => {
-              if (Date.now() < suppressUntil.current) return;
-              const t = e.currentTarget;
-              const max = t.scrollHeight - t.clientHeight;
-              if (max > 0) onScrollPercent(Math.max(0, Math.min(1, t.scrollTop / max)));
-            } : undefined}
-            className="overflow-y-auto overflow-x-hidden relative group/pane"
+            data-pane-scroll className="overflow-y-auto overflow-x-hidden relative group/pane"
             style={{ height: `${pane.heightPercent}%` }}
           >
             <div className="p-4 sm:p-6 md:p-8 lg:p-12">
