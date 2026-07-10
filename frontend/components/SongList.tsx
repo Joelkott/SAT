@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { Song } from '@/lib/api';
-import { PencilIcon, PlayIcon } from '@/components/icons';
+import { PencilIcon, PlayIcon, ListPlusIcon } from '@/components/icons';
 
 interface SongListProps {
   songs: Song[];
@@ -10,10 +11,13 @@ interface SongListProps {
   loading?: boolean;
   onEdit?: (song: Song) => void;
   onSendToLive?: (song: Song) => void;
+  onAddToQueue?: (song: Song) => void;
   onHover?: (song: Song | null) => void;
 }
 
-export default function SongList({ songs, onSelectSong, selectedSongId, loading, onEdit, onSendToLive, onHover }: SongListProps) {
+export default function SongList({ songs, onSelectSong, selectedSongId, loading, onEdit, onSendToLive, onAddToQueue, onHover }: SongListProps) {
+  const [addedId, setAddedId] = useState<string | null>(null);
+
   if (loading) {
     return (
       <div className="bg-surface-raised rounded-xl border border-edge p-6 text-center">
@@ -76,6 +80,25 @@ export default function SongList({ songs, onSelectSong, selectedSongId, loading,
               </div>
 
               <div className="flex gap-1.5 shrink-0">
+                {onAddToQueue && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddToQueue(song);
+                      setAddedId(song.id);
+                      setTimeout(() => setAddedId((cur) => (cur === song.id ? null : cur)), 1200);
+                    }}
+                    className={`h-9 w-9 flex items-center justify-center rounded-md border cursor-pointer transition-colors duration-150 ${
+                      addedId === song.id
+                        ? 'border-ok/60 text-ok'
+                        : 'border-edge text-ink-dim hover:text-ink hover:border-edge-strong hover:bg-surface-hover'
+                    }`}
+                    aria-label={`Add ${song.title} to queue`}
+                    title={addedId === song.id ? 'Added' : 'Add to queue'}
+                  >
+                    <ListPlusIcon className="w-4 h-4" />
+                  </button>
+                )}
                 {onEdit && (
                   <button
                     onClick={(e) => {

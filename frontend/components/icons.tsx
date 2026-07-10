@@ -82,6 +82,18 @@ export function PlayIcon(props: IconProps) {
   );
 }
 
+export function ListPlusIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M11 12H3" />
+      <path d="M16 6H3" />
+      <path d="M11 18H3" />
+      <path d="M15 15h6" />
+      <path d="M18 12v6" />
+    </svg>
+  );
+}
+
 export function RefreshIcon(props: IconProps) {
   return (
     <svg {...base(props)}>
