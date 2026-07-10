@@ -372,7 +372,7 @@ export default function BiblePanel() {
     if (saved === 'media' || saved === 'worship' || saved === 'admin') setRole(saved);
   }, []);
 
-  const [suggestion, setSuggestion] = useState<{ reference: string; updated_at: number } | null>(null);
+  const [suggestion, setSuggestion] = useState<{ reference: string; updated_at: number; bibles?: string[] } | null>(null);
   const seenSuggestionRef = useRef<number>(0);
 
   // Media: mirror what worship sends to live. Auto = follow and send to the
@@ -393,6 +393,20 @@ export default function BiblePanel() {
   // loaded (mirroring navigates first, then data arrives async).
   const pendingWallSendRef = useRef(false);
 
+  // Mirror worship's passage AND translation columns, then queue the wall send.
+  const applyMirror = useCallback((reference: string, bibles?: string[]) => {
+    if (bibles && bibles.length > 0) {
+      const valid = bibles.filter((id) => translations.some((t) => t.id === id)).slice(0, MAX_COLUMNS);
+      if (valid.length > 0) {
+        setSelectedBibleIds((prev) =>
+          prev.length === valid.length && prev.every((id, i) => id === valid[i]) ? prev : valid
+        );
+      }
+    }
+    pendingWallSendRef.current = true;
+    handleReferenceSearch(reference);
+  }, [translations, handleReferenceSearch]);
+
   // Both teams poll the shared suggestion channel, each listening only for
   // the other side: worship hears media's proposals, media hears what
   // worship took live.
@@ -407,15 +421,14 @@ export default function BiblePanel() {
         if ((sug.from || 'media') !== listenFor) return;
         if (role === 'media' && autoMirror) {
           seenSuggestionRef.current = sug.updated_at;
-          pendingWallSendRef.current = true;
-          handleReferenceSearch(sug.reference);
+          applyMirror(sug.reference, sug.bibles);
         } else {
-          setSuggestion({ reference: sug.reference, updated_at: sug.updated_at });
+          setSuggestion({ reference: sug.reference, updated_at: sug.updated_at, bibles: sug.bibles });
         }
       } catch {}
     }, 3000);
     return () => clearInterval(id);
-  }, [role, autoMirror, handleReferenceSearch]);
+  }, [role, autoMirror, applyMirror]);
 
   // Wall output -------------------------------------------------------------
   const [wallState, setWallState] = useState<'idle' | 'sending' | 'live'>('idle');
@@ -481,9 +494,9 @@ export default function BiblePanel() {
     if (columns.length === 0) return;
     displayChannelRef.current?.postMessage({ type: 'scripture', columns });
     if (role === 'worship' && columns[0]) {
-      liveApi.setSuggestion(columns[0].reference, 'worship').catch(() => {});
+      liveApi.setSuggestion(columns[0].reference, 'worship', selectedBibleIds).catch(() => {});
     }
-  }, [buildScriptureColumns, role]);
+  }, [buildScriptureColumns, role, selectedBibleIds]);
 
   // Complete a pending mirror: once the navigated chapter's content arrives,
   // push it to the wall automatically.
@@ -756,8 +769,7 @@ export default function BiblePanel() {
           <button
             onClick={() => {
               seenSuggestionRef.current = suggestion.updated_at;
-              pendingWallSendRef.current = true;
-              handleReferenceSearch(suggestion.reference);
+              applyMirror(suggestion.reference, suggestion.bibles);
               setSuggestion(null);
             }}
             className="h-8 px-3.5 rounded-md bg-accent-deep hover:bg-accent text-on-accent text-sm font-semibold cursor-pointer transition-colors duration-150"

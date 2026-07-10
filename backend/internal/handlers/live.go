@@ -84,9 +84,10 @@ func (h *Handler) ClearLiveScripture(c *fiber.Ctx) error {
 // --- Verse suggestions: media team proposes, worship team accepts ---
 
 type liveSuggestion struct {
-	Reference string `json:"reference"`
-	From      string `json:"from"`
-	UpdatedAt int64  `json:"updated_at"`
+	Reference string   `json:"reference"`
+	From      string   `json:"from"`
+	Bibles    []string `json:"bibles,omitempty"`
+	UpdatedAt int64    `json:"updated_at"`
 }
 
 var suggestionState struct {
@@ -104,14 +105,15 @@ func (h *Handler) GetLiveSuggestion(c *fiber.Ctx) error {
 // POST /api/live/suggestion
 func (h *Handler) SetLiveSuggestion(c *fiber.Ctx) error {
 	var req struct {
-		Reference string `json:"reference"`
-		From      string `json:"from"`
+		Reference string   `json:"reference"`
+		From      string   `json:"from"`
+		Bibles    []string `json:"bibles"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.Reference == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "reference is required"})
 	}
 	suggestionState.mu.Lock()
-	suggestionState.s = liveSuggestion{Reference: req.Reference, From: req.From, UpdatedAt: time.Now().UnixMilli()}
+	suggestionState.s = liveSuggestion{Reference: req.Reference, From: req.From, Bibles: req.Bibles, UpdatedAt: time.Now().UnixMilli()}
 	out := suggestionState.s
 	suggestionState.mu.Unlock()
 	return c.JSON(out)

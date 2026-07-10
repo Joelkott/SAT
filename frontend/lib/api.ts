@@ -495,6 +495,7 @@ export interface LiveScripture {
 export interface LiveSuggestion {
   reference: string;
   from: string;
+  bibles?: string[];
   updated_at: number;
 }
 
@@ -504,8 +505,8 @@ export const liveApi = {
     return response.data;
   },
 
-  setSuggestion: async (reference: string, from: string): Promise<LiveSuggestion> => {
-    const response = await api.post<LiveSuggestion>('/live/suggestion', { reference, from });
+  setSuggestion: async (reference: string, from: string, bibles?: string[]): Promise<LiveSuggestion> => {
+    const response = await api.post<LiveSuggestion>('/live/suggestion', { reference, from, bibles });
     return response.data;
   },
 
