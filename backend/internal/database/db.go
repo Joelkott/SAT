@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -31,7 +32,74 @@ func New(dsn string) (*DB, error) {
 	}
 
 	log.Println("Database connection established")
-	return &DB{db}, nil
+
+	wrapped := &DB{db}
+	if err := wrapped.ensureEditLogTable(); err != nil {
+		log.Printf("⚠️  could not ensure edit_logs table: %v", err)
+	}
+	return wrapped, nil
+}
+
+// ensureEditLogTable creates the audit table on boot (idempotent).
+func (db *DB) ensureEditLogTable() error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS edit_logs (
+			id BIGSERIAL PRIMARY KEY,
+			username TEXT NOT NULL,
+			role TEXT NOT NULL,
+			action TEXT NOT NULL,
+			song_id UUID,
+			song_title TEXT NOT NULL,
+			changes JSONB,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		);
+		CREATE INDEX IF NOT EXISTS idx_edit_logs_created_at ON edit_logs(created_at DESC);
+	`)
+	return err
+}
+
+// InsertEditLog records a song create/update/delete in the audit log.
+func (db *DB) InsertEditLog(entry *models.EditLog) error {
+	var changes interface{}
+	if len(entry.Changes) > 0 {
+		changes = string(entry.Changes)
+	}
+	_, err := db.Exec(`
+		INSERT INTO edit_logs (username, role, action, song_id, song_title, changes)
+		VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+	`, entry.Username, entry.Role, entry.Action, entry.SongID, entry.SongTitle, changes)
+	return err
+}
+
+// GetEditLogs returns the most recent audit entries, newest first.
+func (db *DB) GetEditLogs(limit int) ([]models.EditLog, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	rows, err := db.Query(`
+		SELECT id, username, role, action, song_id, song_title, COALESCE(changes::text, ''), created_at
+		FROM edit_logs
+		ORDER BY created_at DESC, id DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("error querying edit logs: %w", err)
+	}
+	defer rows.Close()
+
+	logs := []models.EditLog{}
+	for rows.Next() {
+		var l models.EditLog
+		var changes string
+		if err := rows.Scan(&l.ID, &l.Username, &l.Role, &l.Action, &l.SongID, &l.SongTitle, &changes, &l.CreatedAt); err != nil {
+			return nil, fmt.Errorf("error scanning edit log: %w", err)
+		}
+		if changes != "" {
+			l.Changes = json.RawMessage(changes)
+		}
+		logs = append(logs, l)
+	}
+	return logs, rows.Err()
 }
 
 // CreateSong inserts a new song into the database

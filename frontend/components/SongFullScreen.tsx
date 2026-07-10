@@ -127,17 +127,6 @@ export default function SongFullScreen({ song, onClose, onEdit, onDelete }: Song
             </pre>
           </div>
 
-          {/* Display Lyrics (for ProPresenter, if different) */}
-          {song.display_lyrics && song.display_lyrics !== song.music_ministry_lyrics && (
-            <div className="mt-12 pt-8 border-t border-gray-700">
-              <h2 className="text-xl font-semibold text-gray-400 mb-4 uppercase tracking-wide">
-                Display Lyrics (ProPresenter)
-              </h2>
-              <pre className="whitespace-pre-wrap font-sans text-xl leading-relaxed text-gray-300">
-                {song.display_lyrics}
-              </pre>
-            </div>
-          )}
         </div>
       </div>
 

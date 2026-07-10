@@ -38,20 +38,6 @@ export default function SongDetail({ song, onEdit, onDelete }: SongDetailProps) 
           </div>
         </div>
 
-        {/* Display Lyrics (for ProPresenter, if different) */}
-        {song.display_lyrics && song.display_lyrics !== song.music_ministry_lyrics && (
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">
-              Display Lyrics (ProPresenter)
-            </h3>
-            <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-lg max-h-[600px] overflow-y-auto">
-              <pre className="whitespace-pre-wrap font-sans text-gray-900 dark:text-white">
-                {song.display_lyrics}
-              </pre>
-            </div>
-          </div>
-        )}
-
         {/* Metadata */}
         <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
           <dl className="grid grid-cols-2 gap-4 text-sm">

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import SongsPanel from '@/components/SongsPanel';
 import BiblePanel from '@/components/bible/BiblePanel';
 import HelpDialog from '@/components/HelpDialog';
+import EditLogDialog from '@/components/EditLogDialog';
 import { MusicIcon, BookOpenIcon, MonitorIcon, XIcon, EyeIcon, EyeOffIcon, HelpCircleIcon } from '@/components/icons';
 import api from '@/lib/api';
 
@@ -21,6 +22,7 @@ export default function Home() {
   const [showPw, setShowPw] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showEditLog, setShowEditLog] = useState(false);
   useEffect(() => {
     if (!localStorage.getItem('sat-token')) window.location.href = '/login';
     else { setAuthed(true); setRole(localStorage.getItem('sat-role') || ''); }
@@ -128,12 +130,20 @@ export default function Home() {
             {menuOpen && (
               <div className="absolute right-0 top-11 z-50 w-44 bg-surface-raised border border-edge rounded-xl shadow-2xl p-1.5 fade-swap">
                 {role === 'admin' && (
-                  <button
-                    onClick={() => { setShowPw(true); setMenuOpen(false); }}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
-                  >
-                    Team passwords
-                  </button>
+                  <>
+                    <button
+                      onClick={() => { setShowEditLog(true); setMenuOpen(false); }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+                    >
+                      Edit history
+                    </button>
+                    <button
+                      onClick={() => { setShowPw(true); setMenuOpen(false); }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+                    >
+                      Team passwords
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={() => { localStorage.removeItem('sat-token'); localStorage.removeItem('sat-role'); window.location.href = '/login'; }}
@@ -151,6 +161,7 @@ export default function Home() {
           live song, Bible position, or refetches the translation catalog. */}
       {showPw && <PasswordManager onClose={() => setShowPw(false)} />}
       {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
+      {showEditLog && <EditLogDialog onClose={() => setShowEditLog(false)} />}
 
       <div className={activeTab === 'songs' ? '' : 'hidden'}>
         <SongsPanel />

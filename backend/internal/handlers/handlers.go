@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -31,6 +32,44 @@ func New(db *database.DB, ts *typesense.Client, backupManager *backup.Manager, p
 	}
 }
 
+// logEdit writes an audit entry for a song mutation; failures are logged, never fatal.
+func (h *Handler) logEdit(c *fiber.Ctx, action string, songID *string, title string, changes map[string]map[string]string) {
+	username, _ := c.Locals("username").(string)
+	role, _ := c.Locals("role").(string)
+	if username == "" {
+		username = "unknown"
+	}
+	if role == "" {
+		role = "unknown"
+	}
+	var raw json.RawMessage
+	if len(changes) > 0 {
+		if b, err := json.Marshal(changes); err == nil {
+			raw = b
+		}
+	}
+	if err := h.db.InsertEditLog(&models.EditLog{
+		Username:  username,
+		Role:      role,
+		Action:    action,
+		SongID:    songID,
+		SongTitle: title,
+		Changes:   raw,
+	}); err != nil {
+		log.Printf("Error writing edit log: %v", err)
+	}
+}
+
+// GetEditLogs returns recent audit entries (admin only, mounted under /admin).
+func (h *Handler) GetEditLogs(c *fiber.Ctx) error {
+	logs, err := h.db.GetEditLogs(c.QueryInt("limit", 200))
+	if err != nil {
+		log.Printf("Error getting edit logs: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to retrieve edit logs"})
+	}
+	return c.JSON(logs)
+}
+
 // CreateSong creates a new song
 func (h *Handler) CreateSong(c *fiber.Ctx) error {
 	var req models.CreateSongRequest
@@ -38,9 +77,13 @@ func (h *Handler) CreateSong(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	// Validation
-	if req.Title == "" || req.DisplayLyrics == "" || req.Language == "" || req.Library == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "Title, display lyrics, language, and library are required"})
+	// Validation. Library is a legacy field — the UI only exposes language, so
+	// default library to the language when not provided.
+	if req.Title == "" || req.DisplayLyrics == "" || req.Language == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Title, display lyrics, and language are required"})
+	}
+	if req.Library == "" {
+		req.Library = req.Language
 	}
 
 	// Create in database
@@ -49,6 +92,8 @@ func (h *Handler) CreateSong(c *fiber.Ctx) error {
 		log.Printf("Error creating song: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to create song"})
 	}
+
+	h.logEdit(c, "create", &song.ID, song.Title, nil)
 
 	// Index in Typesense (skip if skipTypesense is enabled or Typesense is disabled)
 	if !h.skipTypesense && h.ts != nil {
@@ -107,11 +152,48 @@ func (h *Handler) UpdateSong(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
+	// Snapshot the current values so the audit log can record what changed.
+	old, _ := h.db.GetSong(id)
+
 	// Update in database
 	song, err := h.db.UpdateSong(id, &req)
 	if err != nil {
 		log.Printf("Error updating song: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to update song"})
+	}
+
+	if old != nil {
+		changes := map[string]map[string]string{}
+		diff := func(field, oldV, newV string) {
+			if oldV != newV {
+				changes[field] = map[string]string{"old": oldV, "new": newV}
+			}
+		}
+		if req.Title != nil {
+			diff("title", old.Title, *req.Title)
+		}
+		if req.Library != nil {
+			diff("library", old.Library, *req.Library)
+		}
+		if req.Language != nil {
+			diff("language", old.Language, *req.Language)
+		}
+		if req.DisplayLyrics != nil {
+			diff("display_lyrics", old.DisplayLyrics, *req.DisplayLyrics)
+		}
+		if req.MusicMinistryLyrics != nil {
+			diff("music_ministry_lyrics", old.MusicMinistryLyrics, *req.MusicMinistryLyrics)
+		}
+		if req.Artist != nil {
+			oldArtist := ""
+			if old.Artist != nil {
+				oldArtist = *old.Artist
+			}
+			diff("artist", oldArtist, *req.Artist)
+		}
+		if len(changes) > 0 {
+			h.logEdit(c, "update", &song.ID, song.Title, changes)
+		}
 	}
 
 	// Update in Typesense (skip if unavailable)
@@ -139,10 +221,19 @@ func (h *Handler) DeleteSong(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "ID is required"})
 	}
 
+	// Snapshot the title before the row disappears.
+	old, _ := h.db.GetSong(id)
+
 	// Delete from database
 	if err := h.db.DeleteSong(id); err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Song not found"})
 	}
+
+	title := id
+	if old != nil {
+		title = old.Title
+	}
+	h.logEdit(c, "delete", nil, title, nil)
 
 	// Delete from Typesense (skip if unavailable)
 	if !h.skipTypesense && h.ts != nil {

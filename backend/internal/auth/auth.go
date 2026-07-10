@@ -147,6 +147,7 @@ func (s *Service) Middleware() fiber.Handler {
 		}
 		c.Locals("claims", cl)
 		c.Locals("role", cl.Role)
+		c.Locals("username", cl.Username)
 		return c.Next()
 	}
 }

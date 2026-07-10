@@ -158,8 +158,26 @@ export const songsApi = {
   },
 };
 
+// Edit audit log (admin only)
+export interface EditLog {
+  id: number;
+  username: string;
+  role: string;
+  action: 'create' | 'update' | 'delete';
+  song_id?: string;
+  song_title: string;
+  changes?: Record<string, { old: string; new: string }>;
+  created_at: string;
+}
+
 // Admin operations
 export const adminApi = {
+  // Get recent edit logs
+  getEditLogs: async (limit = 200): Promise<EditLog[]> => {
+    const response = await api.get<EditLog[]>(`/admin/edit-logs?limit=${limit}`);
+    return response.data;
+  },
+
   // Trigger reindex
   reindex: async (): Promise<{ message: string; count: number }> => {
     const response = await api.post('/admin/reindex');

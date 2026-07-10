@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Song struct {
 	ID                  string    `json:"id" db:"id"`
@@ -58,6 +61,18 @@ type UpdateSettingsRequest struct {
 	ProPresenterPort         *int    `json:"propresenter_port,omitempty"`
 	ProPresenterPlaylist     *string `json:"propresenter_playlist,omitempty"`
 	ProPresenterPlaylistUUID *string `json:"propresenter_playlist_uuid,omitempty"`
+}
+
+// EditLog records who changed a song and what changed, for the admin audit view.
+type EditLog struct {
+	ID        int64           `json:"id" db:"id"`
+	Username  string          `json:"username" db:"username"`
+	Role      string          `json:"role" db:"role"`
+	Action    string          `json:"action" db:"action"` // create | update | delete
+	SongID    *string         `json:"song_id,omitempty" db:"song_id"`
+	SongTitle string          `json:"song_title" db:"song_title"`
+	Changes   json.RawMessage `json:"changes,omitempty" db:"changes"` // {field: {"old":..., "new":...}}
+	CreatedAt time.Time       `json:"created_at" db:"created_at"`
 }
 
 // Queue Models

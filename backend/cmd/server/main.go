@@ -255,6 +255,7 @@ func main() {
 	// Admin
 	admin := api.Group("/admin", auth.RequireAdmin)
 	admin.Post("/reindex", h.ReindexAll)
+	admin.Get("/edit-logs", h.GetEditLogs)
 	admin.Get("/backups", h.GetBackups)
 	admin.Post("/backups", h.CreateBackup)
 

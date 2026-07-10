@@ -53,7 +53,7 @@ export default function SongsPanel() {
   const startInlineEdit = () => {
     const song = hoverSong || selectedSong;
     if (!song) return;
-    setInlineDraft(song.display_lyrics);
+    setInlineDraft(song.music_ministry_lyrics || song.display_lyrics);
     setInlineEdit(true);
   };
 
@@ -62,8 +62,8 @@ export default function SongsPanel() {
     if (!song) return;
     try {
       setInlineSaving(true);
-      await songsApi.update(song.id, { display_lyrics: inlineDraft });
-      const updated = { ...song, display_lyrics: inlineDraft };
+      await songsApi.update(song.id, { music_ministry_lyrics: inlineDraft });
+      const updated = { ...song, music_ministry_lyrics: inlineDraft };
       if (hoverSong?.id === song.id) setHoverSong(updated);
       if (selectedSong?.id === song.id) setSelectedSong(updated);
       if (liveSong?.id === song.id) handleSendToLive(updated);
@@ -479,7 +479,7 @@ export default function SongsPanel() {
                     ? 'script-indic'
                     : 'leading-relaxed'
                 }`}>
-                  {previewSong.display_lyrics}
+                  {previewSong.music_ministry_lyrics || previewSong.display_lyrics}
                 </pre>
               </div>
             </div>
@@ -830,7 +830,7 @@ function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay }: {
             <div className="min-h-full w-full flex items-center justify-center">
               <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} className="w-full">
                 <pre className={`whitespace-pre-wrap text-center w-full text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((song.language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}>
-                  {song.display_lyrics}
+                  {song.music_ministry_lyrics || song.display_lyrics}
                 </pre>
               </div>
             </div>

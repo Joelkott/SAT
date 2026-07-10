@@ -136,70 +136,51 @@ export default function Display() {
 
   return (
     <div className="h-screen w-screen bg-black text-white overflow-hidden relative">
-      {/* Floating Controls */}
-      <div 
+      {/* Floating controls — a single quiet pill that fades away when idle */}
+      <div
         className={`
-          absolute top-4 right-4 z-50 flex items-center gap-2
-          transition-opacity duration-300
+          absolute top-3 right-3 z-50 flex items-center gap-0.5
+          bg-black/40 backdrop-blur-sm border border-white/10 rounded-full px-1.5 py-1
+          transition-opacity duration-500
           ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}
         `}
       >
-        {/* Alignment Controls */}
-        <div className="flex items-center gap-1 bg-gray-800/80 backdrop-blur-sm rounded-lg px-2 py-1 border border-gray-600">
-          {(['left', 'center', 'right'] as const).map((a) => (
-            <button
-              key={a}
-              onClick={() => applyAlign(a)}
-              title={`Align ${a} (${a[0]})`}
-              className={`w-8 h-8 flex flex-col items-${a === 'left' ? 'start' : a === 'right' ? 'end' : 'center'} justify-center gap-[3px] px-1.5 rounded transition-colors ${textAlign === a ? 'bg-gray-600' : 'hover:bg-gray-700'}`}
-            >
-              <span className="block h-[2px] w-full bg-white/90 rounded" />
-              <span className="block h-[2px] w-3/5 bg-white/90 rounded" />
-              <span className="block h-[2px] w-4/5 bg-white/90 rounded" />
-            </button>
-          ))}
-        </div>
-
-        {/* Zoom Controls */}
-        <div className="flex items-center gap-1 bg-gray-800/80 backdrop-blur-sm rounded-lg px-2 py-1 border border-gray-600">
+        {(['left', 'center', 'right'] as const).map((a) => (
           <button
-            onClick={() => setZoomLevel(prev => Math.max(prev - 0.1, 0.5))}
-            className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded transition-colors"
-            title="Zoom Out (-)"
+            key={a}
+            onClick={() => applyAlign(a)}
+            title={`Align ${a} (${a[0].toUpperCase()})`}
+            className={`w-7 h-7 flex flex-col items-${a === 'left' ? 'start' : a === 'right' ? 'end' : 'center'} justify-center gap-[3px] px-2 rounded-full transition-colors ${
+              textAlign === a ? 'bg-white/15 text-white/80' : 'text-white/35 hover:text-white/70'
+            }`}
           >
-            −
+            <span className="block h-[1.5px] w-full bg-current rounded" />
+            <span className="block h-[1.5px] w-3/5 bg-current rounded" />
+            <span className="block h-[1.5px] w-4/5 bg-current rounded" />
           </button>
-          <span className="text-sm text-gray-300 w-12 text-center">
-            {Math.round(zoomLevel * 100)}%
-          </span>
-          <button
-            onClick={() => setZoomLevel(prev => Math.min(prev + 0.1, 2.0))}
-            className="w-8 h-8 flex items-center justify-center text-white hover:bg-gray-700 rounded transition-colors"
-            title="Zoom In (+)"
-          >
-            +
-          </button>
-          <button
-            onClick={() => setZoomLevel(1.0)}
-            className="text-xs text-gray-400 hover:text-white px-2 transition-colors"
-            title="Reset Zoom (0)"
-          >
-            Reset
-          </button>
-        </div>
-      </div>
-
-      {/* Keyboard Shortcuts Hint */}
-      <div 
-        className={`
-          absolute bottom-4 right-4 z-50 
-          bg-gray-900/80 backdrop-blur-sm text-gray-400 text-xs px-3 py-2 rounded-lg
-          transition-opacity duration-300
-          ${showControls ? 'opacity-100' : 'opacity-0'}
-        `}
-      >
-        <span className="text-cyan-400">+/-</span> Zoom • 
-        <span className="text-gray-400">0</span> Reset
+        ))}
+        <span className="w-px h-4 bg-white/10 mx-1" aria-hidden />
+        <button
+          onClick={() => setZoomLevel(prev => Math.max(prev - 0.1, 0.5))}
+          className="w-7 h-7 flex items-center justify-center text-white/35 hover:text-white/70 rounded-full transition-colors"
+          title="Zoom out (-)"
+        >
+          −
+        </button>
+        <button
+          onClick={() => setZoomLevel(1.0)}
+          className="text-[11px] text-white/35 hover:text-white/70 w-10 text-center tabular-nums transition-colors"
+          title="Reset zoom (0)"
+        >
+          {Math.round(zoomLevel * 100)}%
+        </button>
+        <button
+          onClick={() => setZoomLevel(prev => Math.min(prev + 0.1, 2.0))}
+          className="w-7 h-7 flex items-center justify-center text-white/35 hover:text-white/70 rounded-full transition-colors"
+          title="Zoom in (+)"
+        >
+          +
+        </button>
       </div>
 
       {/* Scripture (from Bible tab) takes precedence over the song */}
@@ -231,7 +212,7 @@ export default function Display() {
           })}
         </div>
       ) : song ? (
-        <SplitLyricsView lyrics={song.display_lyrics} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} />
+        <SplitLyricsView lyrics={song.music_ministry_lyrics || song.display_lyrics} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} />
       ) : (
         <div className="h-full w-full flex items-center justify-center">
           <div className="text-center">
