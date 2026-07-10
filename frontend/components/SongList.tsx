@@ -10,9 +10,10 @@ interface SongListProps {
   loading?: boolean;
   onEdit?: (song: Song) => void;
   onSendToLive?: (song: Song) => void;
+  onHover?: (song: Song | null) => void;
 }
 
-export default function SongList({ songs, onSelectSong, selectedSongId, loading, onEdit, onSendToLive }: SongListProps) {
+export default function SongList({ songs, onSelectSong, selectedSongId, loading, onEdit, onSendToLive, onHover }: SongListProps) {
   if (loading) {
     return (
       <div className="bg-surface-raised rounded-xl border border-edge p-6 text-center">
@@ -38,6 +39,8 @@ export default function SongList({ songs, onSelectSong, selectedSongId, loading,
           return (
             <div
               key={song.id}
+              onMouseEnter={() => onHover?.(song)}
+              onMouseLeave={() => onHover?.(null)}
               className={`w-full text-left p-4 flex items-start gap-3 transition-colors duration-150 border-l-2 ${
                 selected
                   ? 'bg-surface-hover border-l-accent'

@@ -27,6 +27,9 @@ export default function SongsPanel() {
   const [ppSyncing, setPpSyncing] = useState(false);
   const [ppSyncEnabled, setPpSyncEnabled] = useState(true);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [hoverSong, setHoverSong] = useState<Song | null>(null);
+  const [role, setRoleState] = useState('');
+  useEffect(() => { setRoleState(localStorage.getItem('sat-role') || ''); }, []);
   const displayChannelRef = useRef<BroadcastChannel | null>(null);
   const [leftWidth, setLeftWidth] = useState(0.6);
   const [isDragging, setIsDragging] = useState(false);
@@ -455,6 +458,7 @@ export default function SongsPanel() {
               onSelectSong={handleSelectSong}
               onEdit={handleEdit}
               onSendToLive={handleSendToLive}
+              onHover={setHoverSong}
               selectedSongId={selectedSong?.id}
               loading={loading}
             />
@@ -500,7 +504,8 @@ export default function SongsPanel() {
               </div>
             </div>
 
-            {/* ProPresenter Integration */}
+            {/* ProPresenter Integration (not shown to worship) */}
+            {role !== 'worship' && (
             <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-semibold text-ink-mute uppercase tracking-wider">ProPresenter</div>
@@ -552,6 +557,7 @@ export default function SongsPanel() {
                 </div>
               )}
             </div>
+            )}
 
             {/* Queue & Preview */}
             <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-3">
@@ -602,9 +608,9 @@ export default function SongsPanel() {
                 )}
               </div>
 
-              <div className="flex items-start justify-center overflow-hidden" style={{ minHeight: '150%' }}>
-                <div className="bg-black rounded-lg border border-edge overflow-hidden flex flex-col aspect-video w-full" style={{ transform: 'scale(1.8)', transformOrigin: 'top center', maxWidth: '100%' }}>
-                {selectedSong ? (
+              <div className="overflow-hidden">
+                <div className="bg-black rounded-lg border border-edge overflow-hidden flex flex-col aspect-video w-full">
+                {(hoverSong || selectedSong) ? (
                   <div
                     id="preview-scroll-container"
                     className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-12"
@@ -636,14 +642,14 @@ export default function SongsPanel() {
                     >
                       <div className="flex items-center min-h-full py-8">
                         <pre className="whitespace-pre-wrap text-center w-full text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl leading-relaxed text-white">
-                          {selectedSong.display_lyrics}
+                          {(hoverSong || selectedSong)!.display_lyrics}
                         </pre>
                       </div>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-full">
-                    <p className="text-ink-mute text-center text-xs sm:text-sm">Select a song to preview lyrics</p>
+                    <p className="text-ink-mute text-center text-xs sm:text-sm">Hover or select a song to preview it</p>
                   </div>
                 )}
                 </div>
