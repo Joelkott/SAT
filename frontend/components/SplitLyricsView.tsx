@@ -7,6 +7,7 @@ interface SplitLyricsViewProps {
   zoomLevel: number;
   language?: string;
   textAlign?: 'left' | 'center' | 'right';
+  songId?: string;
 }
 
 interface Pane {
@@ -15,13 +16,49 @@ interface Pane {
 }
 
 const MIN_PANE_HEIGHT = 5; // Minimum 5% height per pane
+const DEFAULT_PANES: Pane[] = [{ id: '1', heightPercent: 100 }];
 
-export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign = 'center' }: SplitLyricsViewProps) {
-  const [panes, setPanes] = useState<Pane[]>([
-    { id: '1', heightPercent: 100 },
-  ]);
+// Per-song splitter memory: each song remembers the layout it last had.
+function loadLayout(songId?: string): Pane[] {
+  if (!songId || typeof window === 'undefined') return DEFAULT_PANES;
+  try {
+    const raw = localStorage.getItem(`split-layout:${songId}`);
+    if (!raw) return DEFAULT_PANES;
+    const heights = JSON.parse(raw) as number[];
+    const valid =
+      Array.isArray(heights) &&
+      heights.length >= 1 &&
+      heights.length <= 12 &&
+      heights.every((h) => typeof h === 'number' && h > 0) &&
+      Math.abs(heights.reduce((a, b) => a + b, 0) - 100) < 1;
+    if (!valid) return DEFAULT_PANES;
+    return heights.map((h, i) => ({ id: `${songId}-${i}`, heightPercent: h }));
+  } catch {
+    return DEFAULT_PANES;
+  }
+}
+
+export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign = 'center', songId }: SplitLyricsViewProps) {
+  const [panes, setPanes] = useState<Pane[]>(() => loadLayout(songId));
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const songKeyRef = useRef<string | undefined>(songId);
+
+  // Song changed: restore that song's saved layout, or reset to a single pane.
+  useEffect(() => {
+    if (songKeyRef.current === songId) return;
+    songKeyRef.current = songId;
+    setPanes(loadLayout(songId));
+  }, [songId]);
+
+  // Persist the current song's layout whenever the panes change.
+  useEffect(() => {
+    const key = songKeyRef.current;
+    if (!key) return;
+    try {
+      localStorage.setItem(`split-layout:${key}`, JSON.stringify(panes.map((p) => p.heightPercent)));
+    } catch {}
+  }, [panes]);
 
   // Add a new split
   const addSplit = () => {

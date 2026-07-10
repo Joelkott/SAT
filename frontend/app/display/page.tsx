@@ -212,7 +212,7 @@ export default function Display() {
           })}
         </div>
       ) : song ? (
-        <SplitLyricsView lyrics={song.music_ministry_lyrics || song.display_lyrics} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} />
+        <SplitLyricsView lyrics={song.music_ministry_lyrics || song.display_lyrics} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} songId={song.id} />
       ) : (
         <div className="h-full w-full flex items-center justify-center">
           <div className="text-center">
