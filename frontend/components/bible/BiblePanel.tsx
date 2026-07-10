@@ -641,9 +641,6 @@ export default function BiblePanel() {
       {/* Output actions — visible once a chapter is open, gated by role */}
       {selectedChapter && (
         <div className="flex items-center justify-end gap-2">
-          <span className="px-2.5 h-7 flex items-center rounded-md bg-surface-sunken border border-edge text-xs font-medium capitalize text-ink-mute mr-auto" title="Signed-in team">
-            {role}
-          </span>
           {(role === 'media' || role === 'admin') && (
             <button
               onClick={handleSendToWall}
