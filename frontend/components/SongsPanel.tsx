@@ -40,6 +40,35 @@ export default function SongsPanel() {
   const [previewW, setPreviewW] = useState(0);
   const [previewZoom, setPreviewZoom] = useState(1.0);
   const [liveFrac, setLiveFrac] = useState(0.55);
+  const [inlineEdit, setInlineEdit] = useState(false);
+  const [inlineDraft, setInlineDraft] = useState('');
+  const [inlineSaving, setInlineSaving] = useState(false);
+
+  const startInlineEdit = () => {
+    const song = hoverSong || selectedSong;
+    if (!song) return;
+    setInlineDraft(song.display_lyrics);
+    setInlineEdit(true);
+  };
+
+  const saveInlineEdit = async () => {
+    const song = hoverSong || selectedSong;
+    if (!song) return;
+    try {
+      setInlineSaving(true);
+      await songsApi.update(song.id, { display_lyrics: inlineDraft });
+      const updated = { ...song, display_lyrics: inlineDraft };
+      if (hoverSong?.id === song.id) setHoverSong(updated);
+      if (selectedSong?.id === song.id) setSelectedSong(updated);
+      if (liveSong?.id === song.id) handleSendToLive(updated);
+      await loadSongs();
+      setInlineEdit(false);
+    } catch (err) {
+      console.error('Inline edit failed:', err);
+    } finally {
+      setInlineSaving(false);
+    }
+  };
   useEffect(() => {
     const saved = Number(localStorage.getItem('live-monitor-frac'));
     if (saved >= 0.4 && saved <= 1) setLiveFrac(saved);
@@ -184,8 +213,7 @@ export default function SongsPanel() {
   }, []);
 
   const handleSelectSong = (song: Song) => {
-    setPreviewSong(song);
-    setShowPreviewModal(true);
+    setHoverSong(song);
   };
 
   const handleSendToLive = async (song: Song) => {
@@ -474,7 +502,6 @@ export default function SongsPanel() {
               onSelectSong={handleSelectSong}
               onEdit={handleEdit}
               onSendToLive={handleSendToLive}
-              onHover={setHoverSong}
               selectedSongId={selectedSong?.id}
               loading={loading}
             />
@@ -599,10 +626,35 @@ export default function SongsPanel() {
               />
 
               {/* PREVIEW — hover/selected song, local zoom only */}
+              {inlineEdit ? (
+                <div className="bg-black rounded-lg border border-accent/50 overflow-hidden aspect-video w-full relative flex flex-col">
+                  <textarea
+                    value={inlineDraft}
+                    onChange={(e) => setInlineDraft(e.target.value)}
+                    autoFocus
+                    className="flex-1 w-full bg-black text-white text-sm p-4 resize-none focus:outline-none font-sans text-center"
+                  />
+                  <div className="flex justify-end gap-2 p-2 border-t border-edge bg-surface-sunken">
+                    <button
+                      onClick={() => setInlineEdit(false)}
+                      className="h-8 px-3 rounded-md text-ink-mute hover:text-ink cursor-pointer text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveInlineEdit}
+                      disabled={inlineSaving}
+                      className="h-8 px-3.5 rounded-md bg-accent-deep hover:bg-accent text-on-accent text-sm font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      {inlineSaving ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <SongReplica
                 song={hoverSong || selectedSong}
                 zoom={previewZoom}
-                emptyText="Hover or select a song to preview it"
+                emptyText="Click a song to preview it"
                 badge="PREVIEW"
                 badgeClass="text-ink-mute"
                 overlay={
@@ -620,6 +672,7 @@ export default function SongsPanel() {
                   </>
                 }
               />
+              )}
             </div>
           </div>
         </div>
