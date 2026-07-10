@@ -162,6 +162,25 @@ export default function SongsPanel() {
     };
   }, []);
 
+  // Ctrl+Shift+L (Cmd+Shift+L on Mac) sends the previewed song to live
+  const sendPreviewToLiveRef = useRef<() => void>(() => {});
+  sendPreviewToLiveRef.current = () => {
+    const song = hoverSong || selectedSong;
+    if (song) handleSendToLive(song);
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+        e.preventDefault();
+        sendPreviewToLiveRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // Send zoom level whenever it changes
   useEffect(() => {
     if (displayChannelRef.current && selectedSong) {
@@ -463,6 +482,7 @@ export default function SongsPanel() {
               isOpen={queueOpen}
               onToggle={() => setQueueOpen(false)}
               onSongSelect={(song) => handleSelectSong(song)}
+              onSendToLive={handleSendToLive}
               refreshToken={queueRefresh}
             />
           </div>
@@ -706,7 +726,7 @@ export default function SongsPanel() {
                       onClick={() => (hoverSong || selectedSong) && handleSendToLive((hoverSong || selectedSong)!)}
                       className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ok cursor-pointer"
                       aria-label="Send previewed song to live"
-                      title="Send to live"
+                      title="Send to live (Ctrl+Shift+L)"
                     >
                       <PlayIcon className="w-3.5 h-3.5" />
                     </button>

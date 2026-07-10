@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { queueApi, QueueItem, Song } from '@/lib/api';
+import { MusicIcon, PlayIcon, XIcon } from '@/components/icons';
 import {
   DndContext,
   closestCenter,
@@ -24,17 +25,20 @@ interface QueuePanelProps {
   isOpen: boolean;
   onToggle: () => void;
   onSongSelect?: (song: Song) => void;
+  onSendToLive?: (song: Song) => void;
   onQueueChange?: () => void;
   refreshToken?: number;
 }
 
 interface SortableItemProps {
   item: QueueItem;
+  index: number;
   onDelete: (id: number) => void;
   onSelect?: (song: Song) => void;
+  onSendToLive?: (song: Song) => void;
 }
 
-function SortableItem({ item, onDelete, onSelect }: SortableItemProps) {
+function SortableItem({ item, index, onDelete, onSelect, onSendToLive }: SortableItemProps) {
   const {
     attributes,
     listeners,
@@ -54,64 +58,71 @@ function SortableItem({ item, onDelete, onSelect }: SortableItemProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 p-3 bg-surface-sunken rounded border border-edge ${
-        isDragging ? 'z-50 opacity-50' : ''
+      className={`group flex items-center gap-2 px-2 py-2.5 bg-surface-sunken rounded-lg border border-edge hover:border-edge-strong hover:bg-surface-hover transition-colors duration-150 ${
+        isDragging ? 'z-50' : ''
       }`}
     >
       <div
         {...attributes}
         {...listeners}
-        className="cursor-grab active:cursor-grabbing text-ink-mute hover:text-ink-dim"
+        className="shrink-0 p-1 cursor-grab active:cursor-grabbing text-ink-mute hover:text-ink-dim"
+        title="Drag to reorder"
       >
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 8h16M4 16h16"
-          />
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
         </svg>
       </div>
 
+      <span className="shrink-0 w-5 text-center text-xs text-ink-mute tabular-nums">
+        {index + 1}
+      </span>
+
       <div
-        className="flex-1 min-w-0 cursor-pointer hover:text-blue-400 text-gray-200"
+        className="flex-1 min-w-0 cursor-pointer"
         onClick={() => onSelect && item.song && onSelect(item.song)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && item.song && onSelect) {
+            e.preventDefault();
+            onSelect(item.song);
+          }
+        }}
+        title="Click to preview"
       >
-        <div className="font-medium truncate">{item.song?.title || 'Unknown'}</div>
-        <div className="text-xs text-ink-mute truncate">
-          {item.song?.language} • {item.song?.library}
+        <div className="text-sm font-medium text-ink truncate group-hover:text-accent-hover transition-colors duration-150">
+          {item.song?.title || 'Unknown'}
+        </div>
+        <div className="text-xs text-ink-mute truncate capitalize">
+          {item.song?.language}
         </div>
       </div>
 
-      <button
-        onClick={() => onDelete(item.id)}
-        className="flex-shrink-0 p-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded"
-        title="Remove from queue"
-      >
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+      <div className="flex gap-1 shrink-0">
+        {onSendToLive && item.song && (
+          <button
+            onClick={() => onSendToLive(item.song!)}
+            className="w-7 h-7 flex items-center justify-center rounded-md text-ink-mute hover:text-ok hover:bg-ok/15 cursor-pointer transition-colors duration-150"
+            aria-label={`Send ${item.song.title} to live`}
+            title="Send to live"
+          >
+            <PlayIcon className="w-3.5 h-3.5" />
+          </button>
+        )}
+        <button
+          onClick={() => onDelete(item.id)}
+          className="w-7 h-7 flex items-center justify-center rounded-md text-ink-mute hover:text-danger hover:bg-danger/10 cursor-pointer transition-colors duration-150"
+          aria-label="Remove from queue"
+          title="Remove from queue"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M6 18L18 6M6 6l12 12"
-          />
-        </svg>
-      </button>
+          <XIcon className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 }
 
-export default function QueuePanel({ isOpen, onToggle, onSongSelect, onQueueChange, refreshToken }: QueuePanelProps) {
+export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLive, onQueueChange, refreshToken }: QueuePanelProps) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -227,55 +238,43 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onQueueChan
     <div className="h-full bg-surface-raised border border-edge rounded-xl overflow-hidden fade-swap">
       <div className="h-full flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-edge">
-          <h2 className="text-lg font-semibold text-ink">Queue</h2>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-edge">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-semibold text-ink-mute uppercase tracking-wider">Queue</h2>
+            {queue.length > 0 && (
+              <span className="text-xs text-ink-dim bg-surface-sunken border border-edge px-2 py-0.5 rounded-full tabular-nums">
+                {queue.length}
+              </span>
+            )}
+          </div>
           <button
             onClick={onToggle}
-            className="p-1 text-ink-mute hover:text-ink hover:bg-surface-hover rounded transition-colors"
+            className="p-1.5 rounded-md text-ink-mute hover:text-ink hover:bg-surface-hover cursor-pointer transition-colors duration-150"
             title="Close queue"
+            aria-label="Close queue"
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <XIcon className="w-4 h-4" />
           </button>
         </div>
 
         {/* Error message */}
         {error && (
-          <div className="mx-4 mt-4 p-3 bg-red-900/20 border border-red-800 rounded text-red-400 text-sm">
+          <div className="mx-4 mt-4 px-3 py-2 bg-danger/10 border border-danger/40 rounded-lg text-danger text-sm">
             {error}
           </div>
         )}
 
         {/* Queue items */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-3">
           {queue.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center text-ink-mute">
-              <svg
-                className="w-16 h-16 mb-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                />
-              </svg>
-              <p className="text-sm text-ink-mute">No songs in queue</p>
-              <p className="text-xs mt-1 text-ink-mute">Add songs to get started</p>
+            <div className="flex flex-col items-center justify-center h-full text-center px-4">
+              <div className="w-12 h-12 mb-3 flex items-center justify-center rounded-full bg-surface-sunken border border-edge">
+                <MusicIcon className="w-5 h-5 text-ink-mute" />
+              </div>
+              <p className="text-sm text-ink-dim font-medium">Queue is empty</p>
+              <p className="text-xs mt-1 text-ink-mute">
+                Use the add-to-queue button on a song to line it up for the service.
+              </p>
             </div>
           ) : (
             <DndContext
@@ -287,13 +286,15 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onQueueChan
                 items={queue.map((item) => item.id)}
                 strategy={verticalListSortingStrategy}
               >
-                <div className="space-y-2">
-                  {queue.map((item) => (
+                <div className="space-y-1.5">
+                  {queue.map((item, index) => (
                     <SortableItem
                       key={item.id}
                       item={item}
+                      index={index}
                       onDelete={handleDelete}
                       onSelect={handleSongSelect}
+                      onSendToLive={onSendToLive}
                     />
                   ))}
                 </div>
@@ -304,13 +305,13 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onQueueChan
 
         {/* Footer */}
         {queue.length > 0 && (
-          <div className="p-4 border-t border-edge">
+          <div className="p-3 border-t border-edge">
             <button
               onClick={handleClearAll}
               disabled={loading}
-              className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:opacity-50 text-ink rounded transition-colors"
+              className="w-full px-4 py-2 rounded-lg border border-danger/40 text-danger hover:bg-danger/10 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium cursor-pointer transition-colors duration-150"
             >
-              {loading ? 'Clearing...' : 'Clear All'}
+              {loading ? 'Clearing…' : 'Clear all'}
             </button>
           </div>
         )}
