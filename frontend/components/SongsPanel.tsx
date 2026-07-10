@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { songsApi, Song, SearchResult, propresenterApi, ProPresenterStatus, queueApi } from '@/lib/api';
 import SearchBar from '@/components/SearchBar';
 import SongList from '@/components/SongList';
@@ -275,7 +275,7 @@ export default function SongsPanel() {
       setOpenHistory(JSON.parse(localStorage.getItem('song-open-history') || '{}'));
     } catch {}
   }, []);
-  const recordOpen = (songId: string) => {
+  const recordOpen = useCallback((songId: string) => {
     setOpenHistory((prev) => {
       const next = Object.fromEntries(
         Object.entries({ ...prev, [songId]: Date.now() })
@@ -287,14 +287,14 @@ export default function SongsPanel() {
       } catch {}
       return next;
     });
-  };
+  }, []);
 
-  const handleSelectSong = (song: Song) => {
+  const handleSelectSong = useCallback((song: Song) => {
     setHoverSong(song);
     recordOpen(song.id);
-  };
+  }, [recordOpen]);
 
-  const handleSendToLive = async (song: Song) => {
+  const handleSendToLive = useCallback(async (song: Song) => {
     recordOpen(song.id);
     setLiveSong(song);
     setSelectedSong(song);
@@ -337,7 +337,7 @@ export default function SongsPanel() {
         setPpSyncing(false);
       }
     }
-  };
+  }, [recordOpen, zoomLevel, ppSyncEnabled, ppStatus?.connected]);
 
   // Transient, non-blocking error strip for one-off actions (auto-dismisses).
   const [actionError, setActionError] = useState('');
@@ -347,7 +347,7 @@ export default function SongsPanel() {
     return () => clearTimeout(t);
   }, [actionError]);
 
-  const handleAddToQueue = async (song: Song) => {
+  const handleAddToQueue = useCallback(async (song: Song) => {
     try {
       await queueApi.add(song.id);
       setQueueRefresh((n) => n + 1);
@@ -355,17 +355,17 @@ export default function SongsPanel() {
       console.error('Error adding song to queue:', error);
       setActionError(`Couldn't add "${song.title}" to the queue. Try again.`);
     }
-  };
+  }, []);
 
   const handleCreateNew = () => {
     setEditingSong(null);
     setShowForm(true);
   };
 
-  const handleEdit = (song: Song) => {
+  const handleEdit = useCallback((song: Song) => {
     setEditingSong(song);
     setShowForm(true);
-  };
+  }, []);
 
   // Deletion is confirmed in the UI that calls this (no browser popups).
   const handleDelete = async (songId: string) => {
@@ -434,11 +434,20 @@ export default function SongsPanel() {
     return ordered;
   };
 
-  // Default list: most recently opened first (stable sort keeps API order
-  // for songs never opened). Search results keep their relevance ranking.
-  const displaySongs = searchResults
-    ? reorderByLanguageClient(searchResults.songs || [], selectedLanguages)
-    : [...songs].sort((a, b) => (openHistory[b.id] || 0) - (openHistory[a.id] || 0));
+  // Default list: most recently opened first (stable sort keeps API order for
+  // songs never opened); search results keep their relevance ranking. History
+  // is read through a ref so clicking a song doesn't instantly resort the list
+  // under the cursor — recency applies on the next load or search change. The
+  // memo also keeps the array identity stable so the memoized SongList skips
+  // re-rendering on hover/zoom/preview state changes.
+  const openHistoryRef = useRef(openHistory);
+  openHistoryRef.current = openHistory;
+  const displaySongs = useMemo(() => {
+    if (searchResults) return reorderByLanguageClient(searchResults.songs || [], selectedLanguages);
+    const history = openHistoryRef.current;
+    return [...songs].sort((a, b) => (history[b.id] || 0) - (history[a.id] || 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songs, searchResults, selectedLanguages]);
 
   const handleCloseFullScreen = () => {
     setSelectedSong(null);

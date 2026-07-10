@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Song } from '@/lib/api';
 import { PencilIcon, PlayIcon, ListPlusIcon } from '@/components/icons';
 
@@ -15,8 +15,35 @@ interface SongListProps {
   onHover?: (song: Song | null) => void;
 }
 
-export default function SongList({ songs, onSelectSong, selectedSongId, loading, onEdit, onSendToLive, onAddToQueue, onHover }: SongListProps) {
+// Rows rendered initially / added per scroll step. Rendering the full 2,700
+// song library at once creates ~40k DOM nodes and makes every interaction lag.
+const PAGE = 150;
+
+function SongList({ songs, onSelectSong, selectedSongId, loading, onEdit, onSendToLive, onAddToQueue, onHover }: SongListProps) {
   const [addedId, setAddedId] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // New song set (search results, reload): start from the first page again.
+  useEffect(() => {
+    setVisibleCount(PAGE);
+  }, [songs]);
+
+  // Grow the list as the user scrolls near the bottom.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || visibleCount >= songs.length) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleCount((n) => Math.min(n + PAGE, songs.length));
+        }
+      },
+      { rootMargin: '400px' }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visibleCount, songs.length]);
 
   if (loading) {
     return (
@@ -38,7 +65,7 @@ export default function SongList({ songs, onSelectSong, selectedSongId, loading,
   return (
     <div className="bg-surface-raised rounded-xl border border-edge overflow-hidden">
       <div className="divide-y divide-edge max-h-[540px] overflow-y-auto">
-        {songs.map((song) => {
+        {songs.slice(0, visibleCount).map((song) => {
           const selected = selectedSongId === song.id;
           return (
             <div
@@ -129,7 +156,16 @@ export default function SongList({ songs, onSelectSong, selectedSongId, loading,
             </div>
           );
         })}
+        {visibleCount < songs.length && (
+          <div ref={sentinelRef} className="p-3 text-center text-xs text-ink-mute">
+            Showing {visibleCount} of {songs.length} — scroll for more
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+// Memoized so hover/preview/zoom state changes in the parent don't re-render
+// the (potentially very long) list.
+export default memo(SongList);
