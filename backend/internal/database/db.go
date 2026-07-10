@@ -157,7 +157,7 @@ func (db *DB) GetAllSongs() ([]models.Song, error) {
 	}
 	defer rows.Close()
 
-	var songs []models.Song
+	songs := []models.Song{}
 	for rows.Next() {
 		var song models.Song
 		err := rows.Scan(&song.ID, &song.Title, &song.FileName, &song.Library, &song.Language, &song.ProUUID, &song.DisplayLyrics, &song.MusicMinistryLyrics, &song.Artist, &song.CreatedAt, &song.UpdatedAt)
@@ -201,7 +201,7 @@ func (db *DB) SearchSongs(query string, languages []string) ([]models.Song, erro
 	}
 	defer rows.Close()
 
-	var songs []models.Song
+	songs := []models.Song{}
 	for rows.Next() {
 		var song models.Song
 		if err := rows.Scan(&song.ID, &song.Title, &song.FileName, &song.Library, &song.Language, &song.ProUUID, &song.DisplayLyrics, &song.MusicMinistryLyrics, &song.Artist, &song.CreatedAt, &song.UpdatedAt); err != nil {

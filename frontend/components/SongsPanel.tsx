@@ -437,7 +437,7 @@ export default function SongsPanel() {
   // Default list: most recently opened first (stable sort keeps API order
   // for songs never opened). Search results keep their relevance ranking.
   const displaySongs = searchResults
-    ? reorderByLanguageClient(searchResults.songs, selectedLanguages)
+    ? reorderByLanguageClient(searchResults.songs || [], selectedLanguages)
     : [...songs].sort((a, b) => (openHistory[b.id] || 0) - (openHistory[a.id] || 0));
 
   const handleCloseFullScreen = () => {
