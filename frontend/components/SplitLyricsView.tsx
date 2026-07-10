@@ -7,6 +7,7 @@ interface SplitLyricsViewProps {
   zoomLevel: number;
   language?: string;
   textAlign?: 'left' | 'center' | 'right';
+  scrollPercent?: number | null;
 }
 
 interface Pane {
@@ -16,7 +17,7 @@ interface Pane {
 
 const MIN_PANE_HEIGHT = 5; // Minimum 5% height per pane
 
-export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign = 'center' }: SplitLyricsViewProps) {
+export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign = 'center', scrollPercent }: SplitLyricsViewProps) {
   const [panes, setPanes] = useState<Pane[]>([
     { id: '1', heightPercent: 100 },
   ]);
@@ -33,6 +34,15 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
   };
 
   // Remove a split (can go down to 1 pane)
+  // Remote scroll sync: control window drives pane scroll position.
+  useEffect(() => {
+    if (scrollPercent == null || !containerRef.current) return;
+    containerRef.current.querySelectorAll<HTMLElement>('[data-pane-scroll]').forEach((el) => {
+      const max = el.scrollHeight - el.clientHeight;
+      if (max > 0) el.scrollTop = scrollPercent * max;
+    });
+  }, [scrollPercent]);
+
   // Keyboard: ] adds a pane, [ removes the last one.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -202,7 +212,7 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
         <div key={pane.id} className="contents">
           {/* Pane */}
           <div
-            className="overflow-y-auto overflow-x-hidden relative group/pane"
+            data-pane-scroll className="overflow-y-auto overflow-x-hidden relative group/pane"
             style={{ height: `${pane.heightPercent}%` }}
           >
             <div className="p-4 sm:p-6 md:p-8 lg:p-12">

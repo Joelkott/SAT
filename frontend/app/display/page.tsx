@@ -18,6 +18,7 @@ export default function Display() {
   const [song, setSong] = useState<DisplaySong | null>(null);
   const [scripture, setScripture] = useState<ScriptureColumn[] | null>(null);
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
+  const [scrollPct, setScrollPct] = useState<number | null>(null);
 
   // Restore alignment preference
   useEffect(() => {
@@ -130,6 +131,9 @@ export default function Display() {
       if (data?.type === 'zoom' && typeof data.zoomLevel === 'number') {
         setZoomLevel(data.zoomLevel);
       }
+      if (data?.type === 'scroll' && typeof data.scrollPercent === 'number') {
+        setScrollPct(data.scrollPercent);
+      }
     };
     return () => channel.close();
   }, []);
@@ -231,7 +235,7 @@ export default function Display() {
           })}
         </div>
       ) : song ? (
-        <SplitLyricsView lyrics={song.display_lyrics} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} />
+        <SplitLyricsView lyrics={song.display_lyrics} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} scrollPercent={scrollPct} />
       ) : (
         <div className="h-full w-full flex items-center justify-center">
           <div className="text-center">
