@@ -561,9 +561,6 @@ export default function SongsPanel() {
                   song={liveSong}
                   zoom={zoomLevel}
                   emptyText="Nothing live"
-                  onScrollPercent={(pct) =>
-                    displayChannelRef.current?.postMessage({ type: 'scroll', scrollPercent: pct })
-                  }
                   badge="LIVE"
                   badgeClass="text-live"
                   overlay={
@@ -658,14 +655,13 @@ function ZoomControls({ value, onChange }: { value: number; onChange: (z: number
 }
 
 // Scaled 1920x1080 replica of the display window.
-function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay, onScrollPercent }: {
+function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay }: {
   song: Song | null;
   zoom: number;
   emptyText: string;
   badge: string;
   badgeClass: string;
   overlay: React.ReactNode;
-  onScrollPercent?: (p: number) => void;
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [w, setW] = useState(0);
@@ -692,14 +688,7 @@ function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay, onScro
           className="absolute top-0 left-0 overflow-hidden"
           style={{ width: 1920, height: 1080, transform: `scale(${w / 1920})`, transformOrigin: 'top left' }}
         >
-          <div
-            className="h-full w-full overflow-y-auto p-12"
-            onScroll={onScrollPercent ? (e) => {
-              const t = e.currentTarget;
-              const max = t.scrollHeight - t.clientHeight;
-              if (max > 0) onScrollPercent(Math.max(0, Math.min(1, t.scrollTop / max)));
-            } : undefined}
-          >
+          <div className="h-full w-full overflow-y-auto p-12">
             <div className="min-h-full w-full flex items-center justify-center">
               <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} className="w-full">
                 <pre className={`whitespace-pre-wrap text-center w-full text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((song.language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}>
