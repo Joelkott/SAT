@@ -132,3 +132,13 @@ select option:checked {
 .fade-swap {
   animation: verse-fade 0.3s ease;
 }
+
+/* Buttons: subtle scale press feedback app-wide (HIG-style), skipped for
+   reduced-motion users via the global media query above. */
+button {
+  transition: transform 120ms ease, background-color 150ms ease,
+    border-color 150ms ease, color 150ms ease, opacity 150ms ease;
+}
+button:active:not(:disabled) {
+  transform: scale(0.96);
+}

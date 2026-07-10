@@ -53,14 +53,14 @@ function SortableItem({ item, onDelete, onSelect }: SortableItemProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 p-3 bg-[#141518] rounded border border-[#2a2c31] ${
+      className={`flex items-center gap-2 p-3 bg-surface-sunken rounded border border-edge ${
         isDragging ? 'z-50 opacity-50' : ''
       }`}
     >
       <div
         {...attributes}
         {...listeners}
-        className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-300"
+        className="cursor-grab active:cursor-grabbing text-ink-mute hover:text-ink-dim"
       >
         <svg
           className="w-5 h-5"
@@ -82,7 +82,7 @@ function SortableItem({ item, onDelete, onSelect }: SortableItemProps) {
         onClick={() => onSelect && item.song && onSelect(item.song)}
       >
         <div className="font-medium truncate">{item.song?.title || 'Unknown'}</div>
-        <div className="text-xs text-gray-400 truncate">
+        <div className="text-xs text-ink-mute truncate">
           {item.song?.language} • {item.song?.library}
         </div>
       </div>
@@ -216,19 +216,14 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onQueueChan
   };
 
   return (
-    <div
-      className={`fixed top-0 left-0 h-full bg-[#1a1b1f] border-r border-[#2a2c31] shadow-lg transform transition-transform duration-300 ease-in-out z-40 ${
-        isOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}
-      style={{ width: '300px' }}
-    >
+    <div className="h-full bg-surface-raised border border-edge rounded-xl overflow-hidden fade-swap">
       <div className="h-full flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-[#2a2c31]">
-          <h2 className="text-lg font-semibold text-white">Queue</h2>
+        <div className="flex items-center justify-between p-4 border-b border-edge">
+          <h2 className="text-lg font-semibold text-ink">Queue</h2>
           <button
             onClick={onToggle}
-            className="p-1 text-gray-400 hover:text-white hover:bg-[#2a2c31] rounded transition-colors"
+            className="p-1 text-ink-mute hover:text-ink hover:bg-surface-hover rounded transition-colors"
             title="Close queue"
           >
             <svg
@@ -257,7 +252,7 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onQueueChan
         {/* Queue items */}
         <div className="flex-1 overflow-y-auto p-4">
           {queue.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center text-gray-500">
+            <div className="flex flex-col items-center justify-center h-full text-center text-ink-mute">
               <svg
                 className="w-16 h-16 mb-4"
                 fill="none"
@@ -271,8 +266,8 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onQueueChan
                   d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
                 />
               </svg>
-              <p className="text-sm text-gray-400">No songs in queue</p>
-              <p className="text-xs mt-1 text-gray-500">Add songs to get started</p>
+              <p className="text-sm text-ink-mute">No songs in queue</p>
+              <p className="text-xs mt-1 text-ink-mute">Add songs to get started</p>
             </div>
           ) : (
             <DndContext
@@ -301,11 +296,11 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onQueueChan
 
         {/* Footer */}
         {queue.length > 0 && (
-          <div className="p-4 border-t border-[#2a2c31]">
+          <div className="p-4 border-t border-edge">
             <button
               onClick={handleClearAll}
               disabled={loading}
-              className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:opacity-50 text-white rounded transition-colors"
+              className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:opacity-50 text-ink rounded transition-colors"
             >
               {loading ? 'Clearing...' : 'Clear All'}
             </button>

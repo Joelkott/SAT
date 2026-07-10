@@ -392,22 +392,32 @@ export default function SongsPanel() {
         </div>
       )}
 
-      <QueuePanel
-        isOpen={queueOpen}
-        onToggle={() => setQueueOpen(false)}
-        onSongSelect={(song) => handleSendToLive(song)}
-      />
+      <div className="max-w-7xl mx-auto px-6 py-6 flex gap-5 items-start">
+        {/* Queue pushes content right instead of overlaying it */}
+        {queueOpen && (
+          <div className="w-[300px] shrink-0 self-stretch sticky top-20 max-h-[calc(100vh-120px)]">
+            <QueuePanel
+              isOpen={queueOpen}
+              onToggle={() => setQueueOpen(false)}
+              onSongSelect={(song) => handleSendToLive(song)}
+            />
+          </div>
+        )}
 
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-5">
+        <div className="flex-1 min-w-0 space-y-5">
         <div className="flex items-start gap-3">
           <div className="flex-1">
             <SearchBar onSearch={handleSearch} />
           </div>
           <button
             onClick={() => setQueueOpen((v) => !v)}
-            aria-label="Toggle queue"
-            title="Song queue"
-            className="shrink-0 h-[46px] px-4 flex items-center gap-2 rounded-lg bg-surface-raised border border-edge text-ink-dim hover:text-ink hover:border-accent cursor-pointer transition-colors duration-150 text-sm font-medium"
+            aria-pressed={queueOpen}
+            title={queueOpen ? 'Hide queue' : 'Show song queue'}
+            className={`shrink-0 h-[46px] px-4 flex items-center gap-2 rounded-lg border cursor-pointer text-sm font-medium ${
+              queueOpen
+                ? 'bg-accent/15 border-accent/50 text-accent-hover'
+                : 'bg-surface-raised border-edge text-ink-dim hover:text-ink hover:border-accent'
+            }`}
           >
             <MusicIcon className="w-4 h-4" />
             Queue
@@ -649,6 +659,7 @@ export default function SongsPanel() {
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </>
