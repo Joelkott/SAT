@@ -224,6 +224,7 @@ func main() {
 	// Auth
 	api.Post("/auth/login", authSvc.Login)
 	api.Get("/auth/me", authSvc.Me)
+	api.Put("/auth/users/:username/password", auth.RequireAdmin, authSvc.SetPassword)
 
 	// Songs CRUD
 	api.Post("/songs", h.CreateSong)

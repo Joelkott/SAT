@@ -158,3 +158,25 @@ func RequireAdmin(c *fiber.Ctx) error {
 	}
 	return c.Next()
 }
+
+// SetPassword handles PUT /api/auth/users/:username/password (admin only):
+// lets the admin reset any team account, including their own.
+func (s *Service) SetPassword(c *fiber.Ctx) error {
+	username := strings.ToLower(strings.TrimSpace(c.Params("username")))
+	var req struct{ Password string }
+	if err := c.BodyParser(&req); err != nil || len(req.Password) < 6 {
+		return c.Status(400).JSON(fiber.Map{"error": "Password must be at least 6 characters"})
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
+	}
+	res, err := s.db.Exec(`UPDATE users SET password_hash=$1 WHERE username=$2`, string(hash), username)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to update password"})
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return c.Status(404).JSON(fiber.Map{"error": "Unknown account"})
+	}
+	return c.JSON(fiber.Map{"message": "Password updated"})
+}

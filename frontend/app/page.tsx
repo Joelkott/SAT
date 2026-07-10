@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import SongsPanel from '@/components/SongsPanel';
 import BiblePanel from '@/components/bible/BiblePanel';
-import { MusicIcon, BookOpenIcon, MonitorIcon } from '@/components/icons';
+import { MusicIcon, BookOpenIcon, MonitorIcon, XIcon } from '@/components/icons';
+import api from '@/lib/api';
 
 type Tab = 'songs' | 'bible';
 
@@ -15,9 +16,11 @@ const TABS: { id: Tab; label: string; Icon: typeof MusicIcon }[] = [
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('songs');
   const [authed, setAuthed] = useState(false);
+  const [role, setRole] = useState('');
+  const [showPw, setShowPw] = useState(false);
   useEffect(() => {
     if (!localStorage.getItem('sat-token')) window.location.href = '/login';
-    else setAuthed(true);
+    else { setAuthed(true); setRole(localStorage.getItem('sat-role') || ''); }
   }, []);
   if (!authed) return <div className="min-h-screen bg-surface" />;
 
@@ -81,6 +84,15 @@ export default function Home() {
             <BookOpenIcon className="w-4 h-4" />
             <span className="hidden sm:inline">Resolume</span>
           </button>
+          {role === 'admin' && (
+            <button
+              onClick={() => setShowPw(true)}
+              title="Manage team passwords"
+              className="h-9 px-3 rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-accent cursor-pointer text-sm"
+            >
+              Passwords
+            </button>
+          )}
           <button
             onClick={() => { localStorage.removeItem('sat-token'); localStorage.removeItem('sat-role'); window.location.href = '/login'; }}
             title="Sign out"
@@ -101,11 +113,67 @@ export default function Home() {
 
       {/* Tab content — both stay mounted so switching tabs never loses the
           live song, Bible position, or refetches the translation catalog. */}
+      {showPw && <PasswordManager onClose={() => setShowPw(false)} />}
+
       <div className={activeTab === 'songs' ? '' : 'hidden'}>
         <SongsPanel />
       </div>
       <div className={activeTab === 'bible' ? '' : 'hidden'}>
         <BiblePanel />
+      </div>
+    </div>
+  );
+}
+
+function PasswordManager({ onClose }: { onClose: () => void }) {
+  const [values, setValues] = useState<Record<string, string>>({ admin: '', media: '', worship: '' });
+  const [status, setStatus] = useState<Record<string, string>>({});
+
+  const save = async (user: string) => {
+    if ((values[user] || '').length < 6) {
+      setStatus((s) => ({ ...s, [user]: 'Min 6 characters' }));
+      return;
+    }
+    try {
+      await api.put(`/auth/users/${user}/password`, { password: values[user] });
+      setStatus((s) => ({ ...s, [user]: 'Updated ✓' }));
+      setValues((v) => ({ ...v, [user]: '' }));
+    } catch (err: any) {
+      setStatus((s) => ({ ...s, [user]: err?.response?.data?.error || 'Failed' }));
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6">
+      <div className="bg-surface-raised border border-edge rounded-2xl w-full max-w-md p-6 space-y-4 fade-swap">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-ink">Team passwords</h2>
+          <button onClick={onClose} aria-label="Close" className="p-2 rounded-md text-ink-mute hover:text-ink hover:bg-surface-hover cursor-pointer">
+            <XIcon className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-xs text-ink-mute">
+          Set a new password for any team account. You only need to remember the admin one.
+        </p>
+        {(['admin', 'media', 'worship'] as const).map((user) => (
+          <div key={user} className="flex items-center gap-2">
+            <span className="w-20 text-sm font-medium text-ink-dim capitalize shrink-0">{user}</span>
+            <input
+              type="password"
+              value={values[user]}
+              onChange={(e) => setValues((v) => ({ ...v, [user]: e.target.value }))}
+              placeholder="New password"
+              className="flex-1 min-w-0 px-3 py-2 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute text-sm"
+            />
+            <button
+              onClick={() => save(user)}
+              className="h-9 px-3 rounded-lg bg-accent-deep hover:bg-accent text-on-accent text-sm font-semibold cursor-pointer shrink-0"
+            >
+              Set
+            </button>
+            {status[user] && <span className="text-xs text-ink-mute shrink-0">{status[user]}</span>}
+          </div>
+        ))}
       </div>
     </div>
   );
