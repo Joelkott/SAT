@@ -462,7 +462,7 @@ export default function SongsPanel() {
             <QueuePanel
               isOpen={queueOpen}
               onToggle={() => setQueueOpen(false)}
-              onSongSelect={(song) => handleSendToLive(song)}
+              onSongSelect={(song) => handleSelectSong(song)}
               refreshToken={queueRefresh}
             />
           </div>
@@ -704,18 +704,17 @@ export default function SongsPanel() {
                   <>
                     <button
                       onClick={() => (hoverSong || selectedSong) && handleSendToLive((hoverSong || selectedSong)!)}
-                      className="h-7 px-2 flex items-center gap-1 rounded text-ok hover:bg-ok/15 cursor-pointer text-xs font-semibold"
+                      className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ok cursor-pointer"
                       aria-label="Send previewed song to live"
-                      title="Go Live"
+                      title="Send to live"
                     >
                       <PlayIcon className="w-3.5 h-3.5" />
-                      Go Live
                     </button>
                     <span className="w-px h-4 bg-edge" aria-hidden />
                     <button
-                      onClick={() => (hoverSong || selectedSong) && handleEdit((hoverSong || selectedSong)!)}
+                      onClick={startInlineEdit}
                       className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ink cursor-pointer"
-                      aria-label="Edit this song"
+                      aria-label="Edit lyrics in preview"
                       title="Quick edit"
                     >
                       <PencilIcon className="w-3.5 h-3.5" />
