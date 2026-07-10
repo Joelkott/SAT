@@ -7,7 +7,7 @@ import SongList from '@/components/SongList';
 import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
 import QueuePanel from '@/components/QueuePanel';
-import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon } from '@/components/icons';
+import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon } from '@/components/icons';
 
 export default function SongsPanel() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -40,6 +40,11 @@ export default function SongsPanel() {
   const [previewW, setPreviewW] = useState(0);
   const [previewZoom, setPreviewZoom] = useState(1.0);
   const [liveFrac, setLiveFrac] = useState(0.55);
+  const [liveCollapsed, setLiveCollapsed] = useState(false);
+  useEffect(() => { setLiveCollapsed(localStorage.getItem('live-collapsed') === '1'); }, []);
+  const toggleLiveCollapsed = () => {
+    setLiveCollapsed((v) => { localStorage.setItem('live-collapsed', v ? '0' : '1'); return !v; });
+  };
   const [inlineEdit, setInlineEdit] = useState(false);
   const [inlineDraft, setInlineDraft] = useState('');
   const [inlineSaving, setInlineSaving] = useState(false);
@@ -583,7 +588,29 @@ export default function SongsPanel() {
             {/* Live monitor + song preview (drag divider to resize) */}
             <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-2">
               {/* LIVE — mirrors the display window; zoom here controls it */}
-              <div style={{ width: `${liveFrac * 100}%` }} className="mx-auto">
+              {liveCollapsed ? (
+                <button
+                  onClick={toggleLiveCollapsed}
+                  title="Expand live monitor"
+                  className="w-full h-9 flex items-center justify-between px-3 rounded-lg bg-surface-sunken border border-edge cursor-pointer text-xs"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className={`w-1.5 h-1.5 rounded-full ${liveSong ? 'bg-live animate-pulse' : 'bg-edge-strong'}`} />
+                    <span className="font-bold tracking-widest text-live">LIVE</span>
+                    <span className="text-ink-mute truncate max-w-[180px]">{liveSong ? liveSong.title : 'Nothing live'}</span>
+                  </span>
+                  <ChevronDownIcon className="w-3.5 h-3.5 text-ink-mute" />
+                </button>
+              ) : (
+              <div style={{ width: `${liveFrac * 100}%` }} className="mx-auto relative">
+                <button
+                  onClick={toggleLiveCollapsed}
+                  title="Collapse live monitor"
+                  aria-label="Collapse live monitor"
+                  className="absolute bottom-2 right-2 z-10 w-7 h-7 flex items-center justify-center rounded-md bg-black/60 border border-edge text-ink-mute hover:text-ink cursor-pointer"
+                >
+                  <ChevronDownIcon className="w-3.5 h-3.5 rotate-180" />
+                </button>
                 <SongReplica
                   song={liveSong}
                   zoom={zoomLevel}
@@ -601,8 +628,10 @@ export default function SongsPanel() {
                   }
                 />
               </div>
+              )}
 
               {/* Divider: drag vertically to resize the live monitor */}
+              {!liveCollapsed && (
               <div
                 role="separator"
                 aria-orientation="horizontal"
@@ -624,6 +653,7 @@ export default function SongsPanel() {
                   window.addEventListener('pointerup', up);
                 }}
               />
+              )}
 
               {/* PREVIEW — hover/selected song, local zoom only */}
               {inlineEdit ? (
