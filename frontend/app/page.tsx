@@ -77,14 +77,6 @@ export default function Home() {
           <div className="flex-1" />
 
           {/* Global actions */}
-          <button
-            onClick={() => window.open('/output/bible', '_blank', 'noopener,noreferrer')}
-            title="Open the Resolume/LED-wall capture page (/output/bible)"
-            className="flex items-center gap-2 h-9 px-3.5 rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-accent hover:bg-accent/10 cursor-pointer transition-colors duration-150 text-sm font-medium shrink-0"
-          >
-            <BookOpenIcon className="w-4 h-4" />
-            <span className="hidden sm:inline">Resolume</span>
-          </button>
           {/* Outputs: role-gated */}
           <div className="flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5">
             {(role === 'worship' || role === 'admin') && (
