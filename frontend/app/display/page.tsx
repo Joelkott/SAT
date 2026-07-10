@@ -61,6 +61,11 @@ export default function Display() {
     };
   }, []);
 
+  // Require a signed-in session on the display machine too.
+  useEffect(() => {
+    if (!localStorage.getItem('sat-token')) window.location.href = '/login';
+  }, []);
+
   // Load last pushed song from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('lyrics-display-current');

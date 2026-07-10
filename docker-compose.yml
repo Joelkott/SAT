@@ -46,6 +46,10 @@ services:
       API_BIBLE_BASE_URL: ${API_BIBLE_BASE_URL:-https://rest.api.bible/v1}
       # Set TZ in .env so the daily 2 AM backup fires at 2 AM *local* time.
       TZ: ${TZ:-UTC}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:-}
+      AUTH_MEDIA_PASSWORD: ${AUTH_MEDIA_PASSWORD:-}
+      AUTH_WORSHIP_PASSWORD: ${AUTH_WORSHIP_PASSWORD:-}
       # Caption/AI Bible reference pipeline (optional)
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       JGM_CAPTIONS_URL: ${JGM_CAPTIONS_URL:-}

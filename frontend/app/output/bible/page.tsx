@@ -128,6 +128,14 @@ function BibleOutput() {
 
   const [state, setState] = useState<LiveScripture | null>(null);
 
+  // Kiosk auth: accept ?token= once, persist it, then require a session.
+  useEffect(() => {
+    const t = params.get('token');
+    if (t) localStorage.setItem('sat-token', t);
+    if (!localStorage.getItem('sat-token')) window.location.href = '/login';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Alpha capture: the app shell paints a dark background; clear it so an
   // OBS browser source can composite the glass boxes over Resolume layers.
   useEffect(() => {

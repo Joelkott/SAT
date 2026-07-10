@@ -326,15 +326,11 @@ export default function BiblePanel() {
   }, []);
 
   // Team role: media proposes verses, worship gets an accept prompt.
-  const [role, setRole] = useState<'media' | 'worship'>('worship');
+  const [role, setRole] = useState<'media' | 'worship' | 'admin'>('worship');
   useEffect(() => {
-    const saved = localStorage.getItem('bible-role');
-    if (saved === 'media' || saved === 'worship') setRole(saved);
+    const saved = localStorage.getItem('sat-role');
+    if (saved === 'media' || saved === 'worship' || saved === 'admin') setRole(saved);
   }, []);
-  const changeRole = (r: 'media' | 'worship') => {
-    setRole(r);
-    localStorage.setItem('bible-role', r);
-  };
 
   const [suggestion, setSuggestion] = useState<{ reference: string; updated_at: number } | null>(null);
   const seenSuggestionRef = useRef<number>(0);
@@ -577,19 +573,9 @@ export default function BiblePanel() {
           >
             Display
           </button>
-          <div className="flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5" title="Team role">
-            {(['media', 'worship'] as const).map((r) => (
-              <button
-                key={r}
-                onClick={() => changeRole(r)}
-                className={`px-2.5 h-7 rounded-md text-xs font-medium capitalize cursor-pointer transition-colors duration-150 ${
-                  role === r ? 'bg-surface-hover text-ink border border-edge-strong' : 'text-ink-mute hover:text-ink-dim border border-transparent'
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
+          <span className="px-2.5 h-7 flex items-center rounded-md bg-surface-sunken border border-edge text-xs font-medium capitalize text-ink-mute" title="Signed-in team">
+            {role}
+          </span>
           <button
             onClick={handleClearWall}
             title="Clear scripture from the wall and display outputs"

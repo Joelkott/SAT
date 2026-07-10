@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import SongsPanel from '@/components/SongsPanel';
 import BiblePanel from '@/components/bible/BiblePanel';
 import { MusicIcon, BookOpenIcon, MonitorIcon } from '@/components/icons';
@@ -14,6 +14,12 @@ const TABS: { id: Tab; label: string; Icon: typeof MusicIcon }[] = [
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('songs');
+  const [authed, setAuthed] = useState(false);
+  useEffect(() => {
+    if (!localStorage.getItem('sat-token')) window.location.href = '/login';
+    else setAuthed(true);
+  }, []);
+  if (!authed) return <div className="min-h-screen bg-surface" />;
 
   return (
     <div className="min-h-screen bg-surface text-ink">
@@ -74,6 +80,13 @@ export default function Home() {
           >
             <BookOpenIcon className="w-4 h-4" />
             <span className="hidden sm:inline">Resolume</span>
+          </button>
+          <button
+            onClick={() => { localStorage.removeItem('sat-token'); localStorage.removeItem('sat-role'); window.location.href = '/login'; }}
+            title="Sign out"
+            className="h-9 px-3 rounded-lg text-ink-mute hover:text-danger cursor-pointer text-sm"
+          >
+            Sign out
           </button>
           <button
             onClick={() => window.open('/display', '_blank', 'noopener,noreferrer')}

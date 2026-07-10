@@ -44,6 +44,15 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
   console.log('API URL:', API_URL);
 }
 
+// Attach the session token to every request.
+api.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('sat-token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // Add error interceptor for better debugging
 api.interceptors.response.use(
   (response) => response,
@@ -55,6 +64,14 @@ api.interceptors.response.use(
       message: error.message,
       data: error.response?.data,
     });
+    if (
+      typeof window !== 'undefined' &&
+      error.response?.status === 401 &&
+      !window.location.pathname.startsWith('/login')
+    ) {
+      localStorage.removeItem('sat-token');
+      window.location.href = '/login';
+    }
     return Promise.reject(error);
   }
 );

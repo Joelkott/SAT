@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/joho/godotenv"
+	"github.com/yourusername/audience-stage-teleprompter/internal/auth"
 	"github.com/yourusername/audience-stage-teleprompter/internal/backup"
 	"github.com/yourusername/audience-stage-teleprompter/internal/bible"
 	"github.com/yourusername/audience-stage-teleprompter/internal/captionstream"
@@ -209,18 +210,27 @@ func main() {
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
 
+	// Auth: everything behind login except health/login and key-authed routes.
+	authSvc := auth.New(db.DB)
+	authSvc.Bootstrap()
+	app.Use(authSvc.Middleware())
+
 	// Routes
 	api := app.Group("/api")
 
 	// Health check
 	api.Get("/health", h.HealthCheck)
 
+	// Auth
+	api.Post("/auth/login", authSvc.Login)
+	api.Get("/auth/me", authSvc.Me)
+
 	// Songs CRUD
 	api.Post("/songs", h.CreateSong)
 	api.Get("/songs", h.GetAllSongs)
 	api.Get("/songs/:id", h.GetSong)
 	api.Put("/songs/:id", h.UpdateSong)
-	api.Delete("/songs/:id", h.DeleteSong)
+	api.Delete("/songs/:id", auth.RequireAdmin, h.DeleteSong)
 
 	// Search
 	api.Get("/search", h.SearchSongs)
@@ -242,14 +252,14 @@ func main() {
 	api.Post("/queue/clear", h.ClearQueue)
 
 	// Admin
-	admin := api.Group("/admin")
+	admin := api.Group("/admin", auth.RequireAdmin)
 	admin.Post("/reindex", h.ReindexAll)
 	admin.Get("/backups", h.GetBackups)
 	admin.Post("/backups", h.CreateBackup)
 
 	// Settings
 	api.Get("/settings", h.GetSettings)
-	api.Put("/settings", h.UpdateSettings)
+	api.Put("/settings", auth.RequireAdmin, h.UpdateSettings)
 
 	// ProPresenter integration
 	pp := api.Group("/propresenter")
