@@ -39,7 +39,11 @@ export default function SongsPanel() {
   const previewBoxRef = useRef<HTMLDivElement | null>(null);
   const [previewW, setPreviewW] = useState(0);
   const [previewZoom, setPreviewZoom] = useState(1.0);
-  const [liveFrac, setLiveFrac] = useState(0.75);
+  const [liveFrac, setLiveFrac] = useState(0.55);
+  useEffect(() => {
+    const saved = Number(localStorage.getItem('live-monitor-frac'));
+    if (saved >= 0.4 && saved <= 1) setLiveFrac(saved);
+  }, []);
   useEffect(() => {
     const el = previewBoxRef.current;
     if (!el) return;
@@ -494,28 +498,6 @@ export default function SongsPanel() {
             className="space-y-4"
             style={{ flexBasis: `${(1 - leftWidth) * 100}%`, minWidth: '25%' }}
           >
-            {/* Live Song Tile */}
-            <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${liveSong ? 'bg-live animate-pulse' : 'bg-edge-strong'}`} />
-                <span className={`text-xs font-semibold uppercase tracking-wider ${liveSong ? 'text-live' : 'text-ink-mute'}`}>
-                  Live
-                </span>
-              </div>
-              <div className="bg-surface-sunken rounded-lg p-3 flex items-center gap-3 border border-edge">
-                <div className="flex-1 min-w-0">
-                  <div className={`font-semibold truncate ${liveSong ? 'text-ink' : 'text-ink-mute'}`}>
-                    {liveSong ? liveSong.title : 'No song live'}
-                  </div>
-                  {liveSong?.artist && (
-                    <div className="text-sm text-ink-mute truncate">
-                      {liveSong.artist}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
             {/* ProPresenter Integration (not shown to worship) */}
             {role !== 'worship' && (
             <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-3">
@@ -603,7 +585,9 @@ export default function SongsPanel() {
                   const startY = e.clientY;
                   const startFrac = liveFrac;
                   const move = (ev: PointerEvent) => {
-                    setLiveFrac(Math.min(1, Math.max(0.4, startFrac + (ev.clientY - startY) / 300)));
+                    const f = Math.min(1, Math.max(0.4, startFrac + (ev.clientY - startY) / 300));
+                    setLiveFrac(f);
+                    localStorage.setItem('live-monitor-frac', String(f));
                   };
                   const up = () => {
                     window.removeEventListener('pointermove', move);
