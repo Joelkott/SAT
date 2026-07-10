@@ -93,11 +93,21 @@ export default function HelpDialog({ onClose }: HelpDialogProps) {
           </Section>
 
           <Section title="Control window shortcuts">
+            <ShortcutRow keys={['/']}>Jump to the song search box</ShortcutRow>
             <ShortcutRow keys={['Ctrl+Shift+L', '⌘+Shift+L']}>Send the previewed song to live</ShortcutRow>
             <div className="px-3 py-2 text-sm text-ink-dim">
               The <span className="text-ink">pencil</span> on the preview box edits lyrics inline —
               saving updates the song, and the live display if that song is live. Drag the divider
               between LIVE and PREVIEW (or between list and panels) to resize.
+            </div>
+          </Section>
+
+          <Section title="Bible tab">
+            <ShortcutRow keys={['←', '→']}>Step to the previous / next verse (flows across chapters)</ShortcutRow>
+            <div className="px-3 py-2 text-sm text-ink-dim">
+              Your last five passages appear as chips under the toolbar. Use{' '}
+              <span className="text-ink">Pin</span> in the actions row to keep a passage there
+              permanently — handy for the sermon&apos;s key verses.
             </div>
           </Section>
 

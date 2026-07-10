@@ -7,6 +7,7 @@ interface SongFormProps {
   song?: Song | null;
   onSubmit: () => void;
   onCancel: () => void;
+  onDelete?: (songId: string) => Promise<boolean>;
 }
 
 const LANGUAGES = ['english', 'malayalam', 'hindi', 'tamil', 'telugu', 'kannada'];
@@ -16,13 +17,18 @@ const inputClass =
   'hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute ' +
   'transition-colors duration-150';
 
-export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
+export default function SongForm({ song, onSubmit, onCancel, onDelete }: SongFormProps) {
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
   const [language, setLanguage] = useState('english');
   const [lyrics, setLyrics] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => { setIsAdmin(localStorage.getItem('sat-role') === 'admin'); }, []);
 
   useEffect(() => {
     if (song) {
@@ -32,6 +38,31 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
       setLyrics(song.music_ministry_lyrics || song.display_lyrics);
     }
   }, [song]);
+
+  // Unsaved changes? Cancel asks before discarding.
+  const dirty = song
+    ? title !== song.title ||
+      artist !== (song.artist || '') ||
+      language !== song.language ||
+      lyrics !== (song.music_ministry_lyrics || song.display_lyrics)
+    : !!(title.trim() || artist.trim() || lyrics.trim());
+
+  const handleCancelClick = () => {
+    if (dirty) setConfirmDiscard(true);
+    else onCancel();
+  };
+
+  const handleDeleteConfirmed = async () => {
+    if (!song || !onDelete) return;
+    setDeleting(true);
+    const ok = await onDelete(song.id);
+    setDeleting(false);
+    if (ok) onCancel();
+    else {
+      setConfirmDelete(false);
+      setError('Failed to delete the song. Please try again.');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,24 +189,81 @@ export default function SongForm({ song, onSubmit, onCancel }: SongFormProps) {
         </div>
       )}
 
-      {/* Actions — one primary, one quiet */}
-      <div className="flex items-center justify-end gap-3 pt-1">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={loading}
-          className="px-5 py-2.5 rounded-lg text-sm font-medium text-ink-dim hover:text-ink hover:bg-surface-hover border border-transparent hover:border-edge cursor-pointer transition-colors duration-150 disabled:opacity-50"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-6 py-2.5 rounded-lg bg-accent-deep hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed text-on-accent text-sm font-semibold cursor-pointer transition-colors duration-150"
-        >
-          {loading ? 'Saving…' : song ? 'Save changes' : 'Create song'}
-        </button>
-      </div>
+      {/* Actions — one primary, one quiet; destructive far left, admin only */}
+      {confirmDelete ? (
+        <div className="flex items-center justify-between gap-3 pt-1 fade-swap">
+          <p className="text-sm text-ink-dim">
+            Permanently delete <span className="text-ink font-medium">{song?.title}</span>? This cannot be undone.
+          </p>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+              disabled={deleting}
+              className="px-4 py-2.5 rounded-lg text-sm font-medium text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer transition-colors duration-150 disabled:opacity-50"
+            >
+              Keep song
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteConfirmed}
+              disabled={deleting}
+              className="px-5 py-2.5 rounded-lg bg-danger hover:bg-danger/85 text-white text-sm font-semibold cursor-pointer transition-colors duration-150 disabled:opacity-50"
+            >
+              {deleting ? 'Deleting…' : 'Delete song'}
+            </button>
+          </div>
+        </div>
+      ) : confirmDiscard ? (
+        <div className="flex items-center justify-between gap-3 pt-1 fade-swap">
+          <p className="text-sm text-ink-dim">Discard unsaved changes?</p>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setConfirmDiscard(false)}
+              className="px-4 py-2.5 rounded-lg text-sm font-medium text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer transition-colors duration-150"
+            >
+              Keep editing
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-5 py-2.5 rounded-lg border border-danger/50 text-danger hover:bg-danger/10 text-sm font-semibold cursor-pointer transition-colors duration-150"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 pt-1">
+          {song && onDelete && isAdmin && (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              disabled={loading}
+              className="px-4 py-2.5 rounded-lg text-sm font-medium text-danger/80 hover:text-danger hover:bg-danger/10 cursor-pointer transition-colors duration-150 disabled:opacity-50"
+            >
+              Delete…
+            </button>
+          )}
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={handleCancelClick}
+            disabled={loading}
+            className="px-5 py-2.5 rounded-lg text-sm font-medium text-ink-dim hover:text-ink hover:bg-surface-hover border border-transparent hover:border-edge cursor-pointer transition-colors duration-150 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-6 py-2.5 rounded-lg bg-accent-deep hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed text-on-accent text-sm font-semibold cursor-pointer transition-colors duration-150"
+          >
+            {loading ? 'Saving…' : song ? 'Save changes' : 'Create song'}
+          </button>
+        </div>
+      )}
     </form>
   );
 }

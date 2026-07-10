@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { SearchIcon, XIcon } from '@/components/icons';
 
 interface SearchBarProps {
@@ -11,11 +11,28 @@ const LANGUAGES = [
   { code: 'english', label: 'English' },
   { code: 'malayalam', label: 'Malayalam' },
   { code: 'hindi', label: 'Hindi' },
+  { code: 'tamil', label: 'Tamil' },
 ];
 
 export default function SearchBar({ onSearch }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [languages, setLanguages] = useState<string[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // "/" focuses the search box from anywhere (skipped while typing, and when
+  // this tab is hidden — both tabs stay mounted).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable) return;
+      if (!inputRef.current || inputRef.current.offsetParent === null) return;
+      e.preventDefault();
+      inputRef.current.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Debounced search
   useEffect(() => {
@@ -37,8 +54,9 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
       <div className="relative">
         <SearchIcon className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none" />
         <input
+          ref={inputRef}
           type="text"
-          placeholder="Search by title, artist, or lyrics..."
+          placeholder="Search by title, artist, or lyrics…  ( / )"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="w-full pl-10 pr-10 py-3 bg-surface-input text-ink rounded-lg border border-edge hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute transition-colors duration-150"

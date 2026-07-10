@@ -28,6 +28,16 @@ export default function SongsPanel() {
   const [ppSyncEnabled, setPpSyncEnabled] = useState(true);
   const [queueOpen, setQueueOpen] = useState(false);
   const [queueRefresh, setQueueRefresh] = useState(0);
+  const [queueCount, setQueueCount] = useState(0);
+  // Keep the queue-count badge current even while the panel is closed.
+  useEffect(() => {
+    let cancelled = false;
+    queueApi
+      .getAll()
+      .then((items) => { if (!cancelled) setQueueCount(items.length); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [queueRefresh]);
   const [hoverSong, setHoverSong] = useState<Song | null>(null);
   const [role, setRoleState] = useState('');
   useEffect(() => { setRoleState(localStorage.getItem('sat-role') || ''); }, []);
@@ -162,6 +172,19 @@ export default function SongsPanel() {
     };
   }, []);
 
+  // Escape closes the preview modal.
+  useEffect(() => {
+    if (!showPreviewModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowPreviewModal(false);
+        setPreviewSong(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showPreviewModal]);
+
   // Ctrl+Shift+L (Cmd+Shift+L on Mac) sends the previewed song to live
   const sendPreviewToLiveRef = useRef<() => void>(() => {});
   sendPreviewToLiveRef.current = () => {
@@ -204,21 +227,16 @@ export default function SongsPanel() {
     }
   }, [zoomLevel, selectedSong]);
 
+  const [loadError, setLoadError] = useState('');
   const loadSongs = async () => {
     try {
       setLoading(true);
+      setLoadError('');
       const allSongs = await songsApi.getAll();
       setSongs(allSongs);
     } catch (error: any) {
       console.error('Error loading songs:', error);
-      console.error('Error details:', {
-        message: error?.message,
-        response: error?.response?.data,
-        status: error?.response?.status,
-        config: error?.config,
-      });
-      // Show user-friendly error
-      alert(`Failed to load songs: ${error?.response?.data?.error || error?.message || 'Unknown error'}`);
+      setLoadError(error?.response?.data?.error || 'Could not load songs. Check the connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -321,13 +339,21 @@ export default function SongsPanel() {
     }
   };
 
+  // Transient, non-blocking error strip for one-off actions (auto-dismisses).
+  const [actionError, setActionError] = useState('');
+  useEffect(() => {
+    if (!actionError) return;
+    const t = setTimeout(() => setActionError(''), 5000);
+    return () => clearTimeout(t);
+  }, [actionError]);
+
   const handleAddToQueue = async (song: Song) => {
     try {
       await queueApi.add(song.id);
       setQueueRefresh((n) => n + 1);
     } catch (error: any) {
       console.error('Error adding song to queue:', error);
-      alert(`Failed to add to queue: ${error?.response?.data?.error || error?.message || 'Unknown error'}`);
+      setActionError(`Couldn't add "${song.title}" to the queue. Try again.`);
     }
   };
 
@@ -341,21 +367,22 @@ export default function SongsPanel() {
     setShowForm(true);
   };
 
+  // Deletion is confirmed in the UI that calls this (no browser popups).
   const handleDelete = async (songId: string) => {
-    if (!confirm('Are you sure you want to delete this song?')) return false;
-
     try {
       await songsApi.delete(songId);
       await loadSongs();
+      setQueueRefresh((n) => n + 1);
+      if (hoverSong?.id === songId) setHoverSong(null);
       if (selectedSong?.id === songId) {
         setSelectedSong(null);
+        setLiveSong(null);
         localStorage.removeItem('lyrics-display-current');
         displayChannelRef.current?.postMessage({ type: 'clear' });
       }
       return true;
     } catch (error) {
       console.error('Error deleting song:', error);
-      alert('Failed to delete song');
       return false;
     }
   };
@@ -449,14 +476,21 @@ export default function SongsPanel() {
               song={editingSong}
               onSubmit={handleFormSubmit}
               onCancel={handleFormCancel}
+              onDelete={handleDelete}
             />
           </div>
         </div>
       )}
 
       {showPreviewModal && previewSong && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6">
-          <div className="bg-surface-raised rounded-xl border border-edge shadow-2xl w-full max-w-5xl flex flex-col aspect-video overflow-hidden">
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={() => { setShowPreviewModal(false); setPreviewSong(null); }}
+        >
+          <div
+            className="bg-surface-raised rounded-xl border border-edge shadow-2xl w-full max-w-5xl flex flex-col aspect-video overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-4 border-b border-edge flex-shrink-0">
               <div className="flex-1 min-w-0">
                 <h1 className="text-xl font-bold text-ink mb-1 truncate">{previewSong.title}</h1>
@@ -543,6 +577,13 @@ export default function SongsPanel() {
           >
             <MusicIcon className="w-4 h-4" />
             Queue
+            {queueCount > 0 && (
+              <span className={`min-w-[20px] h-5 px-1 flex items-center justify-center rounded-full text-[11px] font-bold tabular-nums ${
+                queueOpen ? 'bg-accent/25 text-accent-hover' : 'bg-surface-sunken border border-edge text-ink-dim'
+              }`}>
+                {queueCount}
+              </span>
+            )}
           </button>
           <button
             onClick={handleCreateNew}
@@ -554,11 +595,29 @@ export default function SongsPanel() {
           </button>
         </div>
 
-        {isSearching && searchResults && (
+        {searchResults && (
           <div className="bg-surface-raised rounded-lg border border-edge px-3 py-2">
             <p className="text-sm text-ink-dim">
               Found <span className="text-ink font-medium">{searchResults.total_found}</span> results in {searchResults.search_time_ms}ms
             </p>
+          </div>
+        )}
+
+        {actionError && (
+          <div className="fade-swap bg-danger/10 border border-danger/40 rounded-lg px-4 py-2.5" role="alert" aria-live="polite">
+            <p className="text-sm text-danger">{actionError}</p>
+          </div>
+        )}
+
+        {loadError && !loading && (
+          <div className="flex items-center gap-3 bg-danger/10 border border-danger/40 rounded-lg px-4 py-3" role="alert">
+            <p className="text-sm text-danger flex-1">{loadError}</p>
+            <button
+              onClick={loadSongs}
+              className="h-8 px-3.5 rounded-md border border-danger/50 text-danger hover:bg-danger/15 text-sm font-medium cursor-pointer transition-colors duration-150"
+            >
+              Retry
+            </button>
           </div>
         )}
 
