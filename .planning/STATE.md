@@ -74,8 +74,15 @@ None yet.
 - HTML content in API responses must be stripped server-side
 - FUMS compliance requirements need review before launch
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260710-du3 | Add to queue buttons on song rows and Go Live button on preview box | 2026-07-10 | 978b426 | [260710-du3-add-to-queue-buttons-on-song-rows-and-go](./quick/260710-du3-add-to-queue-buttons-on-song-rows-and-go/) |
+
 ## Session Continuity
 
 Last session: 2026-03-25T07:29:36.317Z
 Stopped at: Completed 01-03-PLAN.md
+Last activity: 2026-07-10 - Completed quick task 260710-du3: Add to queue buttons on song rows and Go Live button on preview box
 Resume file: None
