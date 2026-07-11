@@ -378,11 +378,14 @@ func (c *Client) AddToPlaylist(playlistUUID, libraryItemUUID string) error {
 	endpoint := fmt.Sprintf("%s/v1/playlist/%s", c.baseURL, playlistUUID)
 
 	// Fetch the playlist's current items so the update appends, not replaces.
+	// NOTE: an item's id.uuid is the playlist ITEM's uuid — the presentation
+	// it points to is under presentation_info.presentation_uuid, and that is
+	// what PUT expects when rebuilding the list.
 	type playlistItem struct {
-		ID struct {
-			UUID string `json:"uuid"`
-		} `json:"id"`
-		Type string `json:"type"`
+		Type             string `json:"type"`
+		PresentationInfo struct {
+			PresentationUUID string `json:"presentation_uuid"`
+		} `json:"presentation_info"`
 	}
 	var existing []playlistItem
 	if resp, err := c.httpClient.Get(endpoint); err == nil {
@@ -397,7 +400,7 @@ func (c *Client) AddToPlaylist(playlistUUID, libraryItemUUID string) error {
 		resp.Body.Close()
 	}
 
-	// Newest on top, then the existing items in their current order.
+	// Newest on top, then the existing presentations in their current order.
 	payload := []map[string]interface{}{
 		{
 			"id": map[string]string{
@@ -407,16 +410,15 @@ func (c *Client) AddToPlaylist(playlistUUID, libraryItemUUID string) error {
 		},
 	}
 	for _, item := range existing {
-		if strings.EqualFold(item.ID.UUID, libraryItemUUID) {
+		presUUID := item.PresentationInfo.PresentationUUID
+		// Skip non-presentation rows (headers etc.) and the song being added
+		// (moved to the top instead of duplicated).
+		if presUUID == "" || strings.EqualFold(presUUID, libraryItemUUID) {
 			continue
 		}
-		itemType := item.Type
-		if itemType == "" {
-			itemType = "presentation"
-		}
 		payload = append(payload, map[string]interface{}{
-			"id":   map[string]string{"uuid": item.ID.UUID},
-			"type": itemType,
+			"id":   map[string]string{"uuid": presUUID},
+			"type": "presentation",
 		})
 	}
 	body, _ := json.Marshal(payload)
