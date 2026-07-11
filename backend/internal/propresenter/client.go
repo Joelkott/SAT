@@ -366,17 +366,38 @@ func (c *Client) CreatePlaylist(name string) (*Playlist, error) {
 	return &playlist, nil
 }
 
-// AddToPlaylist adds a library item to a playlist using PUT method
-// Format: [{"id":{"uuid":"..."},"type":"presentation"}]
+// AddToPlaylist adds a library item to the top of a playlist.
+// PUT /v1/playlist/{id} REPLACES the playlist contents, so the current items
+// are fetched first and written back with the new song prepended (any earlier
+// occurrence of the same song is dropped rather than duplicated).
 func (c *Client) AddToPlaylist(playlistUUID, libraryItemUUID string) error {
 	if !c.enabled {
 		return fmt.Errorf("ProPresenter integration is not enabled")
 	}
 
-	// ProPresenter API: PUT /v1/playlist/{playlist_id}
 	endpoint := fmt.Sprintf("%s/v1/playlist/%s", c.baseURL, playlistUUID)
-	
-	// Use the format: [{"id":{"uuid":"..."},"type":"presentation"}]
+
+	// Fetch the playlist's current items so the update appends, not replaces.
+	type playlistItem struct {
+		ID struct {
+			UUID string `json:"uuid"`
+		} `json:"id"`
+		Type string `json:"type"`
+	}
+	var existing []playlistItem
+	if resp, err := c.httpClient.Get(endpoint); err == nil {
+		if resp.StatusCode == http.StatusOK {
+			var current struct {
+				Items []playlistItem `json:"items"`
+			}
+			if decodeErr := json.NewDecoder(resp.Body).Decode(&current); decodeErr == nil {
+				existing = current.Items
+			}
+		}
+		resp.Body.Close()
+	}
+
+	// Newest on top, then the existing items in their current order.
 	payload := []map[string]interface{}{
 		{
 			"id": map[string]string{
@@ -384,6 +405,19 @@ func (c *Client) AddToPlaylist(playlistUUID, libraryItemUUID string) error {
 			},
 			"type": "presentation",
 		},
+	}
+	for _, item := range existing {
+		if strings.EqualFold(item.ID.UUID, libraryItemUUID) {
+			continue
+		}
+		itemType := item.Type
+		if itemType == "" {
+			itemType = "presentation"
+		}
+		payload = append(payload, map[string]interface{}{
+			"id":   map[string]string{"uuid": item.ID.UUID},
+			"type": itemType,
+		})
 	}
 	body, _ := json.Marshal(payload)
 
