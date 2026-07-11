@@ -174,7 +174,9 @@ func (c *Client) IsConnected() bool {
 
 // healthCheckLocked performs health check without acquiring lock (must be called with lock held)
 func (c *Client) healthCheckLocked() error {
-	resp, err := c.httpClient.Get(c.baseURL + "/v1/status")
+	// /version is the documented liveness endpoint (openapi.propresenter.com);
+	// /v1/status does not exist and 404s on ProPresenter 19.
+	resp, err := c.httpClient.Get(c.baseURL + "/version")
 	if err != nil {
 		return fmt.Errorf("ProPresenter not reachable: %w", err)
 	}
