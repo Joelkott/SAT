@@ -98,6 +98,14 @@ export default function Display() {
       if (e.key === 'l') setTextAlign('left');
       if (e.key === 'c') setTextAlign('center');
       if (e.key === 'r') setTextAlign('right');
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        } else {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
