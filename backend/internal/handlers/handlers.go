@@ -801,6 +801,57 @@ func (h *Handler) GetQueue(c *fiber.Ctx) error {
 }
 
 // AddToQueue adds a song to the queue
+// syncSongToLivePlaylist adds a song's ProPresenter presentation (by pro_uuid)
+// to the configured playlist (settings.propresenter_playlist, e.g. "Live").
+// Best-effort companion to queue/live actions — callers treat errors as
+// non-fatal. Returns the playlist name used.
+func (h *Handler) syncSongToLivePlaylist(song *models.Song) (string, error) {
+	if h.propresenter == nil || !h.propresenter.IsEnabled() {
+		return "", fmt.Errorf("propresenter integration is not enabled")
+	}
+	if song.ProUUID == nil || *song.ProUUID == "" {
+		return "", fmt.Errorf("song has no pro_uuid")
+	}
+
+	settings, err := h.db.GetSettings()
+	if err != nil {
+		return "", fmt.Errorf("failed to retrieve settings: %w", err)
+	}
+
+	playlistUUID := settings.ProPresenterPlaylistUUID
+	if playlistUUID == "" || playlistUUID == "00000000-0000-0000-0000-000000000000" {
+		playlistUUID = settings.LivePlaylistUUID
+	}
+	playlistName := settings.ProPresenterPlaylist
+	if playlistName == "" {
+		playlistName = "Live"
+	}
+
+	// Resolve (and cache) the playlist UUID by name if settings don't have it.
+	if playlistUUID == "" || playlistUUID == "00000000-0000-0000-0000-000000000000" {
+		playlists, err := h.propresenter.GetPlaylists()
+		if err != nil {
+			return playlistName, fmt.Errorf("failed to list playlists: %w", err)
+		}
+		for _, pl := range playlists {
+			if strings.EqualFold(pl.ID.Name, playlistName) {
+				playlistUUID = pl.ID.UUID
+				uuid := pl.ID.UUID
+				h.db.UpdateSettings(&models.UpdateSettingsRequest{ProPresenterPlaylistUUID: &uuid})
+				break
+			}
+		}
+		if playlistUUID == "" || playlistUUID == "00000000-0000-0000-0000-000000000000" {
+			return playlistName, fmt.Errorf("playlist %q not found in ProPresenter", playlistName)
+		}
+	}
+
+	if err := h.propresenter.AddToPlaylist(playlistUUID, *song.ProUUID); err != nil {
+		return playlistName, err
+	}
+	return playlistName, nil
+}
+
 func (h *Handler) AddToQueue(c *fiber.Ctx) error {
 	var req models.AddToQueueRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -812,7 +863,7 @@ func (h *Handler) AddToQueue(c *fiber.Ctx) error {
 	}
 
 	// Verify song exists
-	_, err := h.db.GetSong(req.SongID)
+	song, err := h.db.GetSong(req.SongID)
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Song not found"})
 	}
@@ -824,6 +875,19 @@ func (h *Handler) AddToQueue(c *fiber.Ctx) error {
 		}
 		log.Printf("Error adding to queue: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to add song to queue"})
+	}
+
+	// Mirror the queue into ProPresenter's playlist (best-effort, async —
+	// ProPresenter being offline must never break the queue).
+	if h.propresenter != nil && h.propresenter.IsEnabled() {
+		songCopy := *song
+		go func() {
+			if playlist, err := h.syncSongToLivePlaylist(&songCopy); err != nil {
+				log.Printf("ProPresenter queue sync skipped for %q: %v", songCopy.Title, err)
+			} else {
+				log.Printf("Queued %q added to ProPresenter playlist %q", songCopy.Title, playlist)
+			}
+		}()
 	}
 
 	return c.Status(201).JSON(item)
