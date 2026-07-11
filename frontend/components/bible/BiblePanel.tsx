@@ -392,6 +392,11 @@ export default function BiblePanel() {
   // When set, send to the wall as soon as the navigated chapter's content is
   // loaded (mirroring navigates first, then data arrives async).
   const pendingWallSendRef = useRef(false);
+  // Marks the next wall send as mirror-triggered (suppresses re-publishing).
+  const mirrorSendRef = useRef(false);
+  // What this screen is currently showing, for the same-verse guard below.
+  const currentReferenceRef = useRef<string | null>(null);
+  currentReferenceRef.current = currentReference;
 
   // Mirror worship's passage AND translation columns, then queue the wall send.
   const applyMirror = useCallback((reference: string, bibles?: string[]) => {
@@ -419,6 +424,12 @@ export default function BiblePanel() {
         const sug = await liveApi.getSuggestion();
         if (!sug.reference || sug.updated_at <= seenSuggestionRef.current) return;
         if ((sug.from || 'media') !== listenFor) return;
+        // Same verse we're already showing (e.g. our own live verse echoed
+        // back through the other side): acknowledge silently.
+        if (sug.reference === currentReferenceRef.current) {
+          seenSuggestionRef.current = sug.updated_at;
+          return;
+        }
         if (role === 'media' && autoMirror) {
           seenSuggestionRef.current = sug.updated_at;
           applyMirror(sug.reference, sug.bibles);
@@ -429,6 +440,24 @@ export default function BiblePanel() {
     }, 3000);
     return () => clearInterval(id);
   }, [role, autoMirror, applyMirror]);
+
+  // Enter accepts a pending suggestion banner (worship: open it; media:
+  // mirror it to the wall), skipped while typing in a field.
+  useEffect(() => {
+    if (!suggestion) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      e.preventDefault();
+      seenSuggestionRef.current = suggestion.updated_at;
+      if (role === 'media') applyMirror(suggestion.reference, suggestion.bibles);
+      else handleReferenceSearch(suggestion.reference);
+      setSuggestion(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [suggestion, role, applyMirror, handleReferenceSearch]);
 
   // Wall output -------------------------------------------------------------
   const [wallState, setWallState] = useState<'idle' | 'sending' | 'live'>('idle');
@@ -471,12 +500,16 @@ export default function BiblePanel() {
   const handleSendToWall = useCallback(async () => {
     if (!selectedChapter) return;
     const columns = buildScriptureColumns();
+    // A wall send triggered by mirroring worship must not re-publish a media
+    // suggestion — that would echo worship's own verse back to them.
+    const isMirrorSend = mirrorSendRef.current;
+    mirrorSendRef.current = false;
 
     try {
       setWallState('sending');
       await liveApi.setScripture(columns);
       displayChannelRef.current?.postMessage({ type: 'scripture', columns });
-      if (role === 'media' && columns[0]) {
+      if (role === 'media' && columns[0] && !isMirrorSend) {
         liveApi.setSuggestion(columns[0].reference, 'media').catch(() => {});
       }
       setWallState('live');
@@ -504,6 +537,7 @@ export default function BiblePanel() {
     if (!pendingWallSendRef.current || !selectedChapter) return;
     if (!fullChapters[primaryBibleId]?.content) return;
     pendingWallSendRef.current = false;
+    mirrorSendRef.current = true;
     handleSendToWall();
   }, [fullChapters, selectedChapter, primaryBibleId, handleSendToWall]);
 
@@ -772,9 +806,10 @@ export default function BiblePanel() {
               applyMirror(suggestion.reference, suggestion.bibles);
               setSuggestion(null);
             }}
+            title="Mirror to wall (Enter)"
             className="h-8 px-3.5 rounded-md bg-accent-deep hover:bg-accent text-on-accent text-sm font-semibold cursor-pointer transition-colors duration-150"
           >
-            Mirror to Wall
+            Mirror to Wall ↵
           </button>
           <button
             onClick={() => { seenSuggestionRef.current = suggestion.updated_at; setSuggestion(null); }}
@@ -799,9 +834,10 @@ export default function BiblePanel() {
               handleReferenceSearch(suggestion.reference);
               setSuggestion(null);
             }}
+            title="Accept suggestion (Enter)"
             className="h-8 px-3.5 rounded-md bg-accent-deep hover:bg-accent text-on-accent text-sm font-semibold cursor-pointer transition-colors duration-150"
           >
-            Accept
+            Accept ↵
           </button>
           <button
             onClick={() => { seenSuggestionRef.current = suggestion.updated_at; setSuggestion(null); }}
