@@ -36,24 +36,20 @@ function ScripturePanel({
   reference,
   content,
   indic,
-  width,
-  height,
+  boxWpx,
+  boxHpx,
   fontScale,
   blur,
-  boxWpxCfg,
-  boxHpxCfg,
   textScale,
 }: {
   abbreviation: string;
   reference: string;
   content: string;
   indic: boolean;
-  width: number;
-  height: number;
+  boxWpx: number;
+  boxHpx: number;
   fontScale: number;
   blur: number;
-  boxWpxCfg: number;
-  boxHpxCfg: number;
   textScale: number;
 }) {
   const verses = useMemo(() => parseVerses(content), [content]);
@@ -62,39 +58,26 @@ function ScripturePanel({
     1
   );
 
-  // Explicit px box size; 0 falls back to filling the panel. Text is fitted to
-  // the box's own dimensions (not the panel) so a bigger box gets bigger text
-  // automatically and it stays centered. text_scale nudges that up/down.
-  const boxWpx = boxWpxCfg > 0 ? boxWpxCfg : width;
-  const boxHpx = boxHpxCfg > 0 ? boxHpxCfg : height;
+  // Text is fitted to the box's ACTUAL rendered px size, so it never outgrows
+  // the box; text_scale nudges that up/down. The box itself fills its parent,
+  // which is sized/positioned by the caller.
   const fill = 0.30; // fraction of box area given to glyphs
   const fitted = Math.sqrt((boxWpx * boxHpx * fill) / plainLength);
-  const bodySize = Math.max(14, Math.min(boxWpx * 0.16, fitted)) * fontScale * textScale;
-  const refSize = Math.max(16, Math.min(boxWpx * 0.11, bodySize * 0.72)) * fontScale;
+  const bodySize = Math.max(12, Math.min(boxWpx * 0.16, fitted)) * fontScale * textScale;
+  const refSize = Math.max(14, Math.min(boxWpx * 0.11, bodySize * 0.72)) * fontScale;
 
   return (
     <div
-      className="h-full flex items-center justify-center"
-      style={{ width, padding: Math.round(width * 0.05) }}
+      key={reference}
+      className="fade-swap w-full h-full flex flex-col items-center justify-center text-center rounded-[0.9em] border border-white/20 shadow-2xl overflow-hidden"
+      style={{
+        fontSize: bodySize,
+        padding: '0.9em 1em',
+        backgroundColor: 'rgba(8, 9, 11, 0.55)',
+        backdropFilter: `blur(${blur}px)`,
+        WebkitBackdropFilter: `blur(${blur}px)`,
+      }}
     >
-      {/* Frosted glass box: translucent dark + blur + hairline border keeps
-          the text legible over any background behind the capture. box_w_px /
-          box_h_px (operator px controls) size it; 0 = fill the panel. */}
-      <div
-        key={reference}
-        className="fade-swap flex flex-col items-center justify-center text-center rounded-[0.9em] border border-white/20 shadow-2xl overflow-hidden"
-        style={{
-          width: boxWpxCfg > 0 ? boxWpx : '100%',
-          height: boxHpxCfg > 0 ? boxHpx : '100%',
-          maxWidth: '100%',
-          maxHeight: '100%',
-          fontSize: bodySize,
-          padding: '0.9em 1em',
-          backgroundColor: 'rgba(8, 9, 11, 0.55)',
-          backdropFilter: `blur(${blur}px)`,
-          WebkitBackdropFilter: `blur(${blur}px)`,
-        }}
-      >
         {/* ProPresenter-style reference: white box, black text */}
         <div
           className="inline-block bg-white text-black font-bold mb-[0.9em] rounded-[0.12em]"
@@ -120,7 +103,6 @@ function ScripturePanel({
             </span>
           ))}
         </div>
-      </div>
     </div>
   );
 }
@@ -215,25 +197,28 @@ function BibleOutput() {
   const left = columns[0];
   const right = columns[1] || columns[0];
 
+  // Each box is anchored to its screen edge and extends inward by its width.
+  // 0 = fall back to filling the side panel / IMAG band. Boxes are NOT capped
+  // to the panel — the operator sets exact px and the box grows past the panel
+  // if asked. Vertically the box is centered in the IMAG band.
+  const boxW = boxWpx > 0 ? boxWpx : sideW;
+  const boxH = boxHpx > 0 ? boxHpx : centerH;
+  const boxTop = Math.round(centerY + Math.max(0, (centerH - boxH) / 2));
+
   return (
     <div
       className="relative overflow-hidden"
       style={{ width: w, height: h, backgroundColor: transparent ? 'transparent' : 'black' }}
     >
-      {/* Left panel — aligned to the IMAG's vertical band */}
-      <div
-        className="absolute left-0"
-        style={{ top: centerY, height: centerH, width: sideW }}
-      >
+      {/* Left box — anchored to the left edge, extends inward by boxW */}
+      <div className="absolute left-0" style={{ top: boxTop, height: boxH, width: boxW }}>
         {left && (
           <ScripturePanel
             {...left}
-            width={sideW}
-            height={centerH}
+            boxWpx={boxW}
+            boxHpx={boxH}
             fontScale={fontScale}
             blur={blur}
-            boxWpxCfg={boxWpx}
-            boxHpxCfg={boxHpx}
             textScale={textScale}
           />
         )}
@@ -251,20 +236,15 @@ function BibleOutput() {
         </div>
       )}
 
-      {/* Right panel — aligned to the IMAG's vertical band */}
-      <div
-        className="absolute right-0"
-        style={{ top: centerY, height: centerH, width: sideW }}
-      >
+      {/* Right box — anchored to the right edge, extends inward by boxW */}
+      <div className="absolute right-0" style={{ top: boxTop, height: boxH, width: boxW }}>
         {right && (
           <ScripturePanel
             {...right}
-            width={sideW}
-            height={centerH}
+            boxWpx={boxW}
+            boxHpx={boxH}
             fontScale={fontScale}
             blur={blur}
-            boxWpxCfg={boxWpx}
-            boxHpxCfg={boxHpx}
             textScale={textScale}
           />
         )}

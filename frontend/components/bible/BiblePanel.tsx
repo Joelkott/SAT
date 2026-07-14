@@ -842,8 +842,9 @@ export default function BiblePanel() {
                   onChange={(e) => saveOutputCfg({ ...outputCfg, box_w_px: Math.max(0, Number(e.target.value) || 0) })}
                   className="w-24 px-2.5 py-1.5 bg-surface-input text-ink text-sm border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none"
                 />
-                <span className="text-xs text-ink-mute">px {outputCfg.box_w_px === 0 && '(auto — fills panel)'}</span>
+                <span className="text-xs text-ink-mute">px {outputCfg.box_w_px === 0 && '(auto)'}</span>
               </div>
+              <p className="text-xs text-ink-mute mt-1">How far each box extends in from its screen edge.</p>
             </label>
             <label className="block">
               <div className="mb-1.5 text-sm text-ink-dim">Box height</div>
@@ -854,8 +855,9 @@ export default function BiblePanel() {
                   onChange={(e) => saveOutputCfg({ ...outputCfg, box_h_px: Math.max(0, Number(e.target.value) || 0) })}
                   className="w-24 px-2.5 py-1.5 bg-surface-input text-ink text-sm border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none"
                 />
-                <span className="text-xs text-ink-mute">px {outputCfg.box_h_px === 0 && '(auto — fills band)'}</span>
+                <span className="text-xs text-ink-mute">px {outputCfg.box_h_px === 0 && '(auto)'}</span>
               </div>
+              <p className="text-xs text-ink-mute mt-1">Box height, centered in the IMAG band.</p>
             </label>
             <label className="block">
               <div className="flex items-center justify-between mb-1.5">
