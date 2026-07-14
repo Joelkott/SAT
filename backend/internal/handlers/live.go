@@ -33,12 +33,24 @@ type LiveScripture struct {
 // machines. Set by media/admin, read publicly by the capture page.
 type OutputConfig struct {
 	Blur      int     `json:"blur"`       // backdrop blur radius in px
-	BoxScale  float64 `json:"box_scale"`  // 0.5..1.0 fraction of the panel the box fills
+	BoxW      float64 `json:"box_w"`      // 0.3..1.0 fraction of the panel width the box fills
+	BoxH      float64 `json:"box_h"`      // 0.3..1.0 fraction of the panel height the box fills
+	TextScale float64 `json:"text_scale"` // 0.5..2.0 multiplier on the auto-fitted text size
 	UpdatedAt int64   `json:"updated_at"` // unix millis
 }
 
 func defaultOutputConfig() OutputConfig {
-	return OutputConfig{Blur: 14, BoxScale: 1.0, UpdatedAt: 0}
+	return OutputConfig{Blur: 14, BoxW: 1.0, BoxH: 1.0, TextScale: 1.0, UpdatedAt: 0}
+}
+
+func clampf(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 func clampOutputConfig(cfg OutputConfig) OutputConfig {
@@ -48,12 +60,9 @@ func clampOutputConfig(cfg OutputConfig) OutputConfig {
 	if cfg.Blur > 60 {
 		cfg.Blur = 60
 	}
-	if cfg.BoxScale < 0.5 {
-		cfg.BoxScale = 0.5
-	}
-	if cfg.BoxScale > 1.0 {
-		cfg.BoxScale = 1.0
-	}
+	cfg.BoxW = clampf(cfg.BoxW, 0.3, 1.0)
+	cfg.BoxH = clampf(cfg.BoxH, 0.3, 1.0)
+	cfg.TextScale = clampf(cfg.TextScale, 0.5, 2.0)
 	return cfg
 }
 
@@ -114,11 +123,11 @@ func (h *Handler) ClearLiveScripture(c *fiber.Ctx) error {
 // GetOutputConfig returns the wall-output layout config (public — read by the
 // capture page). GET /api/live/output-config
 func (h *Handler) GetOutputConfig(c *fiber.Ctx) error {
-	blur, boxScale, updatedAt, err := h.db.GetOutputConfig()
+	blur, boxW, boxH, textScale, updatedAt, err := h.db.GetOutputConfig()
 	if err != nil {
 		return c.JSON(defaultOutputConfig())
 	}
-	return c.JSON(clampOutputConfig(OutputConfig{Blur: blur, BoxScale: boxScale, UpdatedAt: updatedAt}))
+	return c.JSON(clampOutputConfig(OutputConfig{Blur: blur, BoxW: boxW, BoxH: boxH, TextScale: textScale, UpdatedAt: updatedAt}))
 }
 
 // SetOutputConfig updates the wall-output layout (media/admin only).
@@ -128,14 +137,16 @@ func (h *Handler) SetOutputConfig(c *fiber.Ctx) error {
 		return c.Status(403).JSON(fiber.Map{"error": "Media or admin access required"})
 	}
 	var req struct {
-		Blur     int     `json:"blur"`
-		BoxScale float64 `json:"box_scale"`
+		Blur      int     `json:"blur"`
+		BoxW      float64 `json:"box_w"`
+		BoxH      float64 `json:"box_h"`
+		TextScale float64 `json:"text_scale"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
-	cfg := clampOutputConfig(OutputConfig{Blur: req.Blur, BoxScale: req.BoxScale, UpdatedAt: time.Now().UnixMilli()})
-	if err := h.db.SetOutputConfig(cfg.Blur, cfg.BoxScale, cfg.UpdatedAt); err != nil {
+	cfg := clampOutputConfig(OutputConfig{Blur: req.Blur, BoxW: req.BoxW, BoxH: req.BoxH, TextScale: req.TextScale, UpdatedAt: time.Now().UnixMilli()})
+	if err := h.db.SetOutputConfig(cfg.Blur, cfg.BoxW, cfg.BoxH, cfg.TextScale, cfg.UpdatedAt); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to save output config"})
 	}
 	return c.JSON(cfg)

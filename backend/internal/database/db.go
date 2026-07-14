@@ -44,35 +44,41 @@ func New(dsn string) (*DB, error) {
 }
 
 // ensureOutputConfigTable creates the single-row wall-output layout config
-// table on boot (idempotent) and seeds the default row.
+// table on boot (idempotent) and seeds the default row. ADD COLUMN guards
+// migrate an older table that only had blur/box_scale.
 func (db *DB) ensureOutputConfigTable() error {
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS output_config (
 			id INT PRIMARY KEY DEFAULT 1,
 			blur INT NOT NULL DEFAULT 14,
-			box_scale DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+			box_w DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+			box_h DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+			text_scale DOUBLE PRECISION NOT NULL DEFAULT 1.0,
 			updated_at BIGINT NOT NULL DEFAULT 0,
 			CONSTRAINT output_config_singleton CHECK (id = 1)
 		);
+		ALTER TABLE output_config ADD COLUMN IF NOT EXISTS box_w DOUBLE PRECISION NOT NULL DEFAULT 1.0;
+		ALTER TABLE output_config ADD COLUMN IF NOT EXISTS box_h DOUBLE PRECISION NOT NULL DEFAULT 1.0;
+		ALTER TABLE output_config ADD COLUMN IF NOT EXISTS text_scale DOUBLE PRECISION NOT NULL DEFAULT 1.0;
 		INSERT INTO output_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 	`)
 	return err
 }
 
 // GetOutputConfig returns the wall-output layout config.
-func (db *DB) GetOutputConfig() (blur int, boxScale float64, updatedAt int64, err error) {
-	err = db.QueryRow(`SELECT blur, box_scale, updated_at FROM output_config WHERE id = 1`).
-		Scan(&blur, &boxScale, &updatedAt)
+func (db *DB) GetOutputConfig() (blur int, boxW, boxH, textScale float64, updatedAt int64, err error) {
+	err = db.QueryRow(`SELECT blur, box_w, box_h, text_scale, updated_at FROM output_config WHERE id = 1`).
+		Scan(&blur, &boxW, &boxH, &textScale, &updatedAt)
 	return
 }
 
 // SetOutputConfig persists the wall-output layout config.
-func (db *DB) SetOutputConfig(blur int, boxScale float64, updatedAt int64) error {
+func (db *DB) SetOutputConfig(blur int, boxW, boxH, textScale float64, updatedAt int64) error {
 	_, err := db.Exec(`
-		INSERT INTO output_config (id, blur, box_scale, updated_at)
-		VALUES (1, $1, $2, $3)
-		ON CONFLICT (id) DO UPDATE SET blur = $1, box_scale = $2, updated_at = $3
-	`, blur, boxScale, updatedAt)
+		INSERT INTO output_config (id, blur, box_w, box_h, text_scale, updated_at)
+		VALUES (1, $1, $2, $3, $4, $5)
+		ON CONFLICT (id) DO UPDATE SET blur = $1, box_w = $2, box_h = $3, text_scale = $4, updated_at = $5
+	`, blur, boxW, boxH, textScale, updatedAt)
 	return err
 }
 

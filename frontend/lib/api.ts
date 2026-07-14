@@ -530,7 +530,7 @@ export const liveApi = {
     return response.data;
   },
 
-  setOutputConfig: async (cfg: { blur: number; box_scale: number }): Promise<OutputConfig> => {
+  setOutputConfig: async (cfg: { blur: number; box_w: number; box_h: number; text_scale: number }): Promise<OutputConfig> => {
     const response = await api.put<OutputConfig>('/live/output-config', cfg);
     return response.data;
   },
@@ -538,8 +538,10 @@ export const liveApi = {
 
 // Resolume/OBS wall-output layout, set by media/admin, read by /output/bible.
 export interface OutputConfig {
-  blur: number;       // backdrop blur radius in px
-  box_scale: number;  // 0.5..1.0 fraction of the side panel the box fills
+  blur: number;        // backdrop blur radius in px
+  box_w: number;       // 0.3..1.0 fraction of the side panel width the box fills
+  box_h: number;       // 0.3..1.0 fraction of the side panel height the box fills
+  text_scale: number;  // 0.5..2.0 multiplier on auto-fitted text size
   updated_at: number;
 }
 

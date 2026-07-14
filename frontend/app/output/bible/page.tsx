@@ -40,7 +40,9 @@ function ScripturePanel({
   height,
   fontScale,
   blur,
-  boxScale,
+  boxW,
+  boxH,
+  textScale,
 }: {
   abbreviation: string;
   reference: string;
@@ -50,7 +52,9 @@ function ScripturePanel({
   height: number;
   fontScale: number;
   blur: number;
-  boxScale: number;
+  boxW: number;
+  boxH: number;
+  textScale: number;
 }) {
   const verses = useMemo(() => parseVerses(content), [content]);
   const plainLength = Math.max(
@@ -58,11 +62,15 @@ function ScripturePanel({
     1
   );
 
-  // Fit text to the panel: font area scales with panel area over text length.
-  const fill = 0.30; // fraction of panel area given to glyphs
-  const fitted = Math.sqrt((width * height * fill) / plainLength);
-  const bodySize = Math.max(14, Math.min(width * 0.16, fitted)) * fontScale;
-  const refSize = Math.max(16, Math.min(width * 0.11, bodySize * 0.72)) * fontScale;
+  // The box fills boxW × boxH of the panel; text is fitted to the box's own
+  // dimensions (not the panel) so shrinking the box shrinks the text with it
+  // and it stays centered. text_scale then nudges the fitted size up/down.
+  const boxWpx = width * boxW;
+  const boxHpx = height * boxH;
+  const fill = 0.30; // fraction of box area given to glyphs
+  const fitted = Math.sqrt((boxWpx * boxHpx * fill) / plainLength);
+  const bodySize = Math.max(14, Math.min(boxWpx * 0.16, fitted)) * fontScale * textScale;
+  const refSize = Math.max(16, Math.min(boxWpx * 0.11, bodySize * 0.72)) * fontScale;
 
   return (
     <div
@@ -70,14 +78,14 @@ function ScripturePanel({
       style={{ width, padding: Math.round(width * 0.05) }}
     >
       {/* Frosted glass box: translucent dark + blur + hairline border keeps
-          the text legible over any background behind the capture. box_scale
-          (operator-controlled) sets how much of the panel the box fills. */}
+          the text legible over any background behind the capture. box_w/box_h
+          (operator-controlled) set how much of the panel the box fills. */}
       <div
         key={reference}
-        className="fade-swap flex flex-col items-center justify-center text-center rounded-[0.9em] border border-white/20 shadow-2xl"
+        className="fade-swap flex flex-col items-center justify-center text-center rounded-[0.9em] border border-white/20 shadow-2xl overflow-hidden"
         style={{
-          width: `${boxScale * 100}%`,
-          height: `${boxScale * 100}%`,
+          width: `${boxW * 100}%`,
+          height: `${boxH * 100}%`,
           fontSize: bodySize,
           padding: '0.9em 1em',
           backgroundColor: 'rgba(8, 9, 11, 0.55)',
@@ -133,10 +141,13 @@ function BibleOutput() {
   const sideW = Math.max(0, Math.floor((w - centerW) / 2));
 
   const [state, setState] = useState<LiveScripture | null>(null);
-  // Operator-controlled layout (blur + box size). URL params are fallbacks so
-  // existing capture URLs keep working before anyone touches the controls.
+  // Operator-controlled layout (blur + box width/height + text size). URL
+  // params are fallbacks so existing capture URLs keep working before anyone
+  // touches the controls.
   const [blur, setBlur] = useState<number>(Number(params.get('blur')) || 14);
-  const [boxScale, setBoxScale] = useState<number>(Number(params.get('boxScale')) || 1);
+  const [boxW, setBoxW] = useState<number>(Number(params.get('boxW')) || 1);
+  const [boxH, setBoxH] = useState<number>(Number(params.get('boxH')) || 1);
+  const [textScale, setTextScale] = useState<number>(Number(params.get('ts')) || 1);
 
   // No auth: this page is a browser-capture source (Resolume/OBS) and cannot
   // carry a session. It only reads the public GET /live/scripture endpoint.
@@ -185,7 +196,9 @@ function BibleOutput() {
         if (alive && cfg.updated_at !== last) {
           last = cfg.updated_at;
           setBlur(cfg.blur);
-          setBoxScale(cfg.box_scale);
+          setBoxW(cfg.box_w);
+          setBoxH(cfg.box_h);
+          setTextScale(cfg.text_scale);
         }
       } catch {
         // Keep last-known layout on transient errors.
@@ -217,7 +230,9 @@ function BibleOutput() {
             height={centerH}
             fontScale={fontScale}
             blur={blur}
-            boxScale={boxScale}
+            boxW={boxW}
+            boxH={boxH}
+            textScale={textScale}
           />
         )}
       </div>
@@ -246,7 +261,9 @@ function BibleOutput() {
             height={centerH}
             fontScale={fontScale}
             blur={blur}
-            boxScale={boxScale}
+            boxW={boxW}
+            boxH={boxH}
+            textScale={textScale}
           />
         )}
       </div>

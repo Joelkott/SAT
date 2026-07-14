@@ -336,13 +336,16 @@ export default function BiblePanel() {
 
   // Wall-output layout (blur + box size) — media/admin adjustable, persisted
   // server-side and applied live on the Resolume/OBS capture page.
-  const [outputCfg, setOutputCfg] = useState<{ blur: number; box_scale: number }>({ blur: 14, box_scale: 1 });
+  type WallCfg = { blur: number; box_w: number; box_h: number; text_scale: number };
+  const [outputCfg, setOutputCfg] = useState<WallCfg>({ blur: 14, box_w: 1, box_h: 1, text_scale: 1 });
   const [showWallLayout, setShowWallLayout] = useState(false);
   const [savingCfg, setSavingCfg] = useState(false);
   useEffect(() => {
-    liveApi.getOutputConfig().then((c) => setOutputCfg({ blur: c.blur, box_scale: c.box_scale })).catch(() => {});
+    liveApi.getOutputConfig()
+      .then((c) => setOutputCfg({ blur: c.blur, box_w: c.box_w, box_h: c.box_h, text_scale: c.text_scale }))
+      .catch(() => {});
   }, []);
-  const saveOutputCfg = useCallback((next: { blur: number; box_scale: number }) => {
+  const saveOutputCfg = useCallback((next: WallCfg) => {
     setOutputCfg(next);
     setSavingCfg(true);
     liveApi.setOutputConfig(next).catch(() => {}).finally(() => setSavingCfg(false));
@@ -829,40 +832,64 @@ export default function BiblePanel() {
             <div className="text-xs font-semibold text-ink-mute uppercase tracking-wider">Resolume wall boxes</div>
             <span className="text-xs text-ink-mute">{savingCfg ? 'Saving…' : 'Applies live'}</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <label className="block">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm text-ink-dim">Box width</span>
+                <span className="text-xs text-ink-mute tabular-nums">{Math.round(outputCfg.box_w * 100)}%</span>
+              </div>
+              <input
+                type="range" min={0.3} max={1} step={0.02}
+                value={outputCfg.box_w}
+                onChange={(e) => saveOutputCfg({ ...outputCfg, box_w: Number(e.target.value) })}
+                className="w-full accent-accent cursor-pointer"
+              />
+            </label>
+            <label className="block">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm text-ink-dim">Box height</span>
+                <span className="text-xs text-ink-mute tabular-nums">{Math.round(outputCfg.box_h * 100)}%</span>
+              </div>
+              <input
+                type="range" min={0.3} max={1} step={0.02}
+                value={outputCfg.box_h}
+                onChange={(e) => saveOutputCfg({ ...outputCfg, box_h: Number(e.target.value) })}
+                className="w-full accent-accent cursor-pointer"
+              />
+            </label>
+            <label className="block">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm text-ink-dim">Text size</span>
+                <span className="text-xs text-ink-mute tabular-nums">{Math.round(outputCfg.text_scale * 100)}%</span>
+              </div>
+              <input
+                type="range" min={0.5} max={2} step={0.05}
+                value={outputCfg.text_scale}
+                onChange={(e) => saveOutputCfg({ ...outputCfg, text_scale: Number(e.target.value) })}
+                className="w-full accent-accent cursor-pointer"
+              />
+              <p className="text-xs text-ink-mute mt-1">Text auto-fits the box; this nudges it up or down.</p>
+            </label>
             <label className="block">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-sm text-ink-dim">Blur</span>
                 <span className="text-xs text-ink-mute tabular-nums">{outputCfg.blur}px</span>
               </div>
               <input
-                type="range"
-                min={0}
-                max={40}
-                step={1}
+                type="range" min={0} max={40} step={1}
                 value={outputCfg.blur}
                 onChange={(e) => saveOutputCfg({ ...outputCfg, blur: Number(e.target.value) })}
                 className="w-full accent-accent cursor-pointer"
               />
-              <p className="text-xs text-ink-mute mt-1">Frosted-glass blur behind the text.</p>
-            </label>
-            <label className="block">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-sm text-ink-dim">Box size</span>
-                <span className="text-xs text-ink-mute tabular-nums">{Math.round(outputCfg.box_scale * 100)}%</span>
-              </div>
-              <input
-                type="range"
-                min={0.5}
-                max={1}
-                step={0.05}
-                value={outputCfg.box_scale}
-                onChange={(e) => saveOutputCfg({ ...outputCfg, box_scale: Number(e.target.value) })}
-                className="w-full accent-accent cursor-pointer"
-              />
-              <p className="text-xs text-ink-mute mt-1">How much of each side panel the box fills.</p>
+              <p className="text-xs text-ink-mute mt-1">Frosts the video behind the box (visible on the wall over Resolume).</p>
             </label>
           </div>
+          <button
+            onClick={() => saveOutputCfg({ blur: 14, box_w: 1, box_h: 1, text_scale: 1 })}
+            className="text-xs text-ink-mute hover:text-ink cursor-pointer transition-colors duration-150"
+          >
+            Reset to defaults
+          </button>
         </div>
       )}
 
