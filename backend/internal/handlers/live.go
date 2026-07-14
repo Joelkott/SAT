@@ -27,6 +27,36 @@ type LiveScripture struct {
 	UpdatedAt int64                 `json:"updated_at"` // unix millis, for cheap change detection
 }
 
+// OutputConfig is the operator-adjustable layout of the Resolume/OBS capture
+// page (/output/bible): frosted-box blur and how much of each side panel the
+// box fills. Persisted in the DB so it survives restarts and is shared across
+// machines. Set by media/admin, read publicly by the capture page.
+type OutputConfig struct {
+	Blur      int     `json:"blur"`       // backdrop blur radius in px
+	BoxScale  float64 `json:"box_scale"`  // 0.5..1.0 fraction of the panel the box fills
+	UpdatedAt int64   `json:"updated_at"` // unix millis
+}
+
+func defaultOutputConfig() OutputConfig {
+	return OutputConfig{Blur: 14, BoxScale: 1.0, UpdatedAt: 0}
+}
+
+func clampOutputConfig(cfg OutputConfig) OutputConfig {
+	if cfg.Blur < 0 {
+		cfg.Blur = 0
+	}
+	if cfg.Blur > 60 {
+		cfg.Blur = 60
+	}
+	if cfg.BoxScale < 0.5 {
+		cfg.BoxScale = 0.5
+	}
+	if cfg.BoxScale > 1.0 {
+		cfg.BoxScale = 1.0
+	}
+	return cfg
+}
+
 type liveState struct {
 	mu        sync.RWMutex
 	scripture LiveScripture
@@ -79,6 +109,36 @@ func (h *Handler) ClearLiveScripture(c *fiber.Ctx) error {
 	live.mu.Unlock()
 
 	return c.JSON(state)
+}
+
+// GetOutputConfig returns the wall-output layout config (public — read by the
+// capture page). GET /api/live/output-config
+func (h *Handler) GetOutputConfig(c *fiber.Ctx) error {
+	blur, boxScale, updatedAt, err := h.db.GetOutputConfig()
+	if err != nil {
+		return c.JSON(defaultOutputConfig())
+	}
+	return c.JSON(clampOutputConfig(OutputConfig{Blur: blur, BoxScale: boxScale, UpdatedAt: updatedAt}))
+}
+
+// SetOutputConfig updates the wall-output layout (media/admin only).
+// PUT /api/live/output-config
+func (h *Handler) SetOutputConfig(c *fiber.Ctx) error {
+	if role, _ := c.Locals("role").(string); role != "media" && role != "admin" {
+		return c.Status(403).JSON(fiber.Map{"error": "Media or admin access required"})
+	}
+	var req struct {
+		Blur     int     `json:"blur"`
+		BoxScale float64 `json:"box_scale"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	cfg := clampOutputConfig(OutputConfig{Blur: req.Blur, BoxScale: req.BoxScale, UpdatedAt: time.Now().UnixMilli()})
+	if err := h.db.SetOutputConfig(cfg.Blur, cfg.BoxScale, cfg.UpdatedAt); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to save output config"})
+	}
+	return c.JSON(cfg)
 }
 
 // --- Verse suggestions: media team proposes, worship team accepts ---

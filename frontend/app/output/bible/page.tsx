@@ -39,6 +39,8 @@ function ScripturePanel({
   width,
   height,
   fontScale,
+  blur,
+  boxScale,
 }: {
   abbreviation: string;
   reference: string;
@@ -47,6 +49,8 @@ function ScripturePanel({
   width: number;
   height: number;
   fontScale: number;
+  blur: number;
+  boxScale: number;
 }) {
   const verses = useMemo(() => parseVerses(content), [content]);
   const plainLength = Math.max(
@@ -66,17 +70,19 @@ function ScripturePanel({
       style={{ width, padding: Math.round(width * 0.05) }}
     >
       {/* Frosted glass box: translucent dark + blur + hairline border keeps
-          the text legible over any background behind the capture. Fills the
-          panel so the left/right boxes are always identical in size. */}
+          the text legible over any background behind the capture. box_scale
+          (operator-controlled) sets how much of the panel the box fills. */}
       <div
         key={reference}
-        className="fade-swap w-full h-full flex flex-col items-center justify-center text-center rounded-[0.9em] border border-white/20 shadow-2xl"
+        className="fade-swap flex flex-col items-center justify-center text-center rounded-[0.9em] border border-white/20 shadow-2xl"
         style={{
+          width: `${boxScale * 100}%`,
+          height: `${boxScale * 100}%`,
           fontSize: bodySize,
           padding: '0.9em 1em',
           backgroundColor: 'rgba(8, 9, 11, 0.55)',
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
+          backdropFilter: `blur(${blur}px)`,
+          WebkitBackdropFilter: `blur(${blur}px)`,
         }}
       >
         {/* ProPresenter-style reference: white box, black text */}
@@ -127,6 +133,10 @@ function BibleOutput() {
   const sideW = Math.max(0, Math.floor((w - centerW) / 2));
 
   const [state, setState] = useState<LiveScripture | null>(null);
+  // Operator-controlled layout (blur + box size). URL params are fallbacks so
+  // existing capture URLs keep working before anyone touches the controls.
+  const [blur, setBlur] = useState<number>(Number(params.get('blur')) || 14);
+  const [boxScale, setBoxScale] = useState<number>(Number(params.get('boxScale')) || 1);
 
   // No auth: this page is a browser-capture source (Resolume/OBS) and cannot
   // carry a session. It only reads the public GET /live/scripture endpoint.
@@ -164,6 +174,28 @@ function BibleOutput() {
     return () => { alive = false; clearInterval(id); };
   }, []);
 
+  // Poll the operator-set layout config so blur/box-size changes made in the
+  // control window take effect on the wall within a second.
+  useEffect(() => {
+    let alive = true;
+    let last = -1;
+    const tick = async () => {
+      try {
+        const cfg = await liveApi.getOutputConfig();
+        if (alive && cfg.updated_at !== last) {
+          last = cfg.updated_at;
+          setBlur(cfg.blur);
+          setBoxScale(cfg.box_scale);
+        }
+      } catch {
+        // Keep last-known layout on transient errors.
+      }
+    };
+    tick();
+    const id = setInterval(tick, POLL_MS);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
   const columns = state?.visible ? state.columns || [] : [];
   const left = columns[0];
   const right = columns[1] || columns[0];
@@ -184,6 +216,8 @@ function BibleOutput() {
             width={sideW}
             height={centerH}
             fontScale={fontScale}
+            blur={blur}
+            boxScale={boxScale}
           />
         )}
       </div>
@@ -211,6 +245,8 @@ function BibleOutput() {
             width={sideW}
             height={centerH}
             fontScale={fontScale}
+            blur={blur}
+            boxScale={boxScale}
           />
         )}
       </div>

@@ -524,6 +524,23 @@ export const liveApi = {
     const response = await api.delete<LiveScripture>('/live/scripture');
     return response.data;
   },
+
+  getOutputConfig: async (): Promise<OutputConfig> => {
+    const response = await api.get<OutputConfig>('/live/output-config');
+    return response.data;
+  },
+
+  setOutputConfig: async (cfg: { blur: number; box_scale: number }): Promise<OutputConfig> => {
+    const response = await api.put<OutputConfig>('/live/output-config', cfg);
+    return response.data;
+  },
 };
+
+// Resolume/OBS wall-output layout, set by media/admin, read by /output/bible.
+export interface OutputConfig {
+  blur: number;       // backdrop blur radius in px
+  box_scale: number;  // 0.5..1.0 fraction of the side panel the box fills
+  updated_at: number;
+}
 
 export default api;

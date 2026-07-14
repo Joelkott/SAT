@@ -37,7 +37,43 @@ func New(dsn string) (*DB, error) {
 	if err := wrapped.ensureEditLogTable(); err != nil {
 		log.Printf("⚠️  could not ensure edit_logs table: %v", err)
 	}
+	if err := wrapped.ensureOutputConfigTable(); err != nil {
+		log.Printf("⚠️  could not ensure output_config table: %v", err)
+	}
 	return wrapped, nil
+}
+
+// ensureOutputConfigTable creates the single-row wall-output layout config
+// table on boot (idempotent) and seeds the default row.
+func (db *DB) ensureOutputConfigTable() error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS output_config (
+			id INT PRIMARY KEY DEFAULT 1,
+			blur INT NOT NULL DEFAULT 14,
+			box_scale DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+			updated_at BIGINT NOT NULL DEFAULT 0,
+			CONSTRAINT output_config_singleton CHECK (id = 1)
+		);
+		INSERT INTO output_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+	`)
+	return err
+}
+
+// GetOutputConfig returns the wall-output layout config.
+func (db *DB) GetOutputConfig() (blur int, boxScale float64, updatedAt int64, err error) {
+	err = db.QueryRow(`SELECT blur, box_scale, updated_at FROM output_config WHERE id = 1`).
+		Scan(&blur, &boxScale, &updatedAt)
+	return
+}
+
+// SetOutputConfig persists the wall-output layout config.
+func (db *DB) SetOutputConfig(blur int, boxScale float64, updatedAt int64) error {
+	_, err := db.Exec(`
+		INSERT INTO output_config (id, blur, box_scale, updated_at)
+		VALUES (1, $1, $2, $3)
+		ON CONFLICT (id) DO UPDATE SET blur = $1, box_scale = $2, updated_at = $3
+	`, blur, boxScale, updatedAt)
+	return err
 }
 
 // ensureEditLogTable creates the audit table on boot (idempotent).

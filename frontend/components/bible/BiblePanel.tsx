@@ -7,6 +7,7 @@ import {
   BibleTranslation,
   BibleBook,
   BibleChapter,
+  OutputConfig,
 } from '@/lib/api';
 import TranslationSelector from '@/components/bible/TranslationSelector';
 import BookList from '@/components/bible/BookList';
@@ -331,6 +332,20 @@ export default function BiblePanel() {
   useEffect(() => {
     try { setRecents(JSON.parse(localStorage.getItem('bible-recents') || '[]')); } catch {}
     try { setPins(JSON.parse(localStorage.getItem('bible-pins') || '[]')); } catch {}
+  }, []);
+
+  // Wall-output layout (blur + box size) — media/admin adjustable, persisted
+  // server-side and applied live on the Resolume/OBS capture page.
+  const [outputCfg, setOutputCfg] = useState<{ blur: number; box_scale: number }>({ blur: 14, box_scale: 1 });
+  const [showWallLayout, setShowWallLayout] = useState(false);
+  const [savingCfg, setSavingCfg] = useState(false);
+  useEffect(() => {
+    liveApi.getOutputConfig().then((c) => setOutputCfg({ blur: c.blur, box_scale: c.box_scale })).catch(() => {});
+  }, []);
+  const saveOutputCfg = useCallback((next: { blur: number; box_scale: number }) => {
+    setOutputCfg(next);
+    setSavingCfg(true);
+    liveApi.setOutputConfig(next).catch(() => {}).finally(() => setSavingCfg(false));
   }, []);
 
   // Human-readable reference of what is currently on screen, e.g. "John 3:16-18".
@@ -782,6 +797,20 @@ export default function BiblePanel() {
               {pins.includes(currentReference) ? 'Pinned' : 'Pin'}
             </button>
           )}
+          {(role === 'media' || role === 'admin') && (
+            <button
+              onClick={() => setShowWallLayout((v) => !v)}
+              aria-pressed={showWallLayout}
+              title="Adjust the Resolume wall box blur and size"
+              className={`h-9 px-3 flex items-center gap-1.5 rounded-lg border cursor-pointer text-sm transition-colors duration-150 ${
+                showWallLayout
+                  ? 'bg-accent/10 border-accent/40 text-accent-hover'
+                  : 'border-edge text-ink-mute hover:text-ink hover:border-accent/50'
+              }`}
+            >
+              Wall layout
+            </button>
+          )}
           <span className="w-px h-5 bg-edge" aria-hidden />
           <button
             onClick={handleClearWall}
@@ -790,6 +819,50 @@ export default function BiblePanel() {
           >
             Clear
           </button>
+        </div>
+      )}
+
+      {/* Wall layout controls (media/admin) — live-adjust the Resolume boxes */}
+      {(role === 'media' || role === 'admin') && showWallLayout && (
+        <div className="fade-swap bg-surface-raised border border-edge rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold text-ink-mute uppercase tracking-wider">Resolume wall boxes</div>
+            <span className="text-xs text-ink-mute">{savingCfg ? 'Saving…' : 'Applies live'}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <label className="block">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm text-ink-dim">Blur</span>
+                <span className="text-xs text-ink-mute tabular-nums">{outputCfg.blur}px</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={40}
+                step={1}
+                value={outputCfg.blur}
+                onChange={(e) => saveOutputCfg({ ...outputCfg, blur: Number(e.target.value) })}
+                className="w-full accent-accent cursor-pointer"
+              />
+              <p className="text-xs text-ink-mute mt-1">Frosted-glass blur behind the text.</p>
+            </label>
+            <label className="block">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm text-ink-dim">Box size</span>
+                <span className="text-xs text-ink-mute tabular-nums">{Math.round(outputCfg.box_scale * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={0.5}
+                max={1}
+                step={0.05}
+                value={outputCfg.box_scale}
+                onChange={(e) => saveOutputCfg({ ...outputCfg, box_scale: Number(e.target.value) })}
+                className="w-full accent-accent cursor-pointer"
+              />
+              <p className="text-xs text-ink-mute mt-1">How much of each side panel the box fills.</p>
+            </label>
+          </div>
         </div>
       )}
 

@@ -246,6 +246,8 @@ func main() {
 	liveGroup.Delete("/scripture", h.ClearLiveScripture)
 	liveGroup.Get("/suggestion", h.GetLiveSuggestion)
 	liveGroup.Post("/suggestion", h.SetLiveSuggestion)
+	liveGroup.Get("/output-config", h.GetOutputConfig)
+	liveGroup.Put("/output-config", h.SetOutputConfig)
 
 	// Queue management
 	api.Get("/queue", h.GetQueue)
