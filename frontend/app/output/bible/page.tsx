@@ -197,13 +197,14 @@ function BibleOutput() {
   const left = columns[0];
   const right = columns[1] || columns[0];
 
-  // Each box is anchored to its screen edge and extends inward by its width.
+  // Each box is anchored to its top screen corner (left box top-left, right
+  // box top-right) and extends inward by its width and down by its height.
   // 0 = fall back to filling the side panel / IMAG band. Boxes are NOT capped
   // to the panel — the operator sets exact px and the box grows past the panel
-  // if asked. Vertically the box is centered in the IMAG band.
+  // if asked.
   const boxW = boxWpx > 0 ? boxWpx : sideW;
   const boxH = boxHpx > 0 ? boxHpx : centerH;
-  const boxTop = Math.round(centerY + Math.max(0, (centerH - boxH) / 2));
+  const boxTop = centerY;
 
   return (
     <div
