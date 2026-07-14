@@ -336,13 +336,13 @@ export default function BiblePanel() {
 
   // Wall-output layout (blur + box size) — media/admin adjustable, persisted
   // server-side and applied live on the Resolume/OBS capture page.
-  type WallCfg = { blur: number; box_w: number; box_h: number; text_scale: number };
-  const [outputCfg, setOutputCfg] = useState<WallCfg>({ blur: 14, box_w: 1, box_h: 1, text_scale: 1 });
+  type WallCfg = { blur: number; box_w_px: number; box_h_px: number; text_scale: number };
+  const [outputCfg, setOutputCfg] = useState<WallCfg>({ blur: 14, box_w_px: 0, box_h_px: 0, text_scale: 1 });
   const [showWallLayout, setShowWallLayout] = useState(false);
   const [savingCfg, setSavingCfg] = useState(false);
   useEffect(() => {
     liveApi.getOutputConfig()
-      .then((c) => setOutputCfg({ blur: c.blur, box_w: c.box_w, box_h: c.box_h, text_scale: c.text_scale }))
+      .then((c) => setOutputCfg({ blur: c.blur, box_w_px: c.box_w_px, box_h_px: c.box_h_px, text_scale: c.text_scale }))
       .catch(() => {});
   }, []);
   const saveOutputCfg = useCallback((next: WallCfg) => {
@@ -834,28 +834,28 @@ export default function BiblePanel() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             <label className="block">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-sm text-ink-dim">Box width</span>
-                <span className="text-xs text-ink-mute tabular-nums">{Math.round(outputCfg.box_w * 100)}%</span>
+              <div className="mb-1.5 text-sm text-ink-dim">Box width</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={0} max={6000} step={10}
+                  value={outputCfg.box_w_px}
+                  onChange={(e) => saveOutputCfg({ ...outputCfg, box_w_px: Math.max(0, Number(e.target.value) || 0) })}
+                  className="w-24 px-2.5 py-1.5 bg-surface-input text-ink text-sm border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none"
+                />
+                <span className="text-xs text-ink-mute">px {outputCfg.box_w_px === 0 && '(auto — fills panel)'}</span>
               </div>
-              <input
-                type="range" min={0.3} max={1} step={0.02}
-                value={outputCfg.box_w}
-                onChange={(e) => saveOutputCfg({ ...outputCfg, box_w: Number(e.target.value) })}
-                className="w-full accent-accent cursor-pointer"
-              />
             </label>
             <label className="block">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-sm text-ink-dim">Box height</span>
-                <span className="text-xs text-ink-mute tabular-nums">{Math.round(outputCfg.box_h * 100)}%</span>
+              <div className="mb-1.5 text-sm text-ink-dim">Box height</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={0} max={6000} step={10}
+                  value={outputCfg.box_h_px}
+                  onChange={(e) => saveOutputCfg({ ...outputCfg, box_h_px: Math.max(0, Number(e.target.value) || 0) })}
+                  className="w-24 px-2.5 py-1.5 bg-surface-input text-ink text-sm border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none"
+                />
+                <span className="text-xs text-ink-mute">px {outputCfg.box_h_px === 0 && '(auto — fills band)'}</span>
               </div>
-              <input
-                type="range" min={0.3} max={1} step={0.02}
-                value={outputCfg.box_h}
-                onChange={(e) => saveOutputCfg({ ...outputCfg, box_h: Number(e.target.value) })}
-                className="w-full accent-accent cursor-pointer"
-              />
             </label>
             <label className="block">
               <div className="flex items-center justify-between mb-1.5">
@@ -881,11 +881,11 @@ export default function BiblePanel() {
                 onChange={(e) => saveOutputCfg({ ...outputCfg, blur: Number(e.target.value) })}
                 className="w-full accent-accent cursor-pointer"
               />
-              <p className="text-xs text-ink-mute mt-1">Frosts the video behind the box (visible on the wall over Resolume).</p>
+              <p className="text-xs text-ink-mute mt-1">Frosts the video behind the box (may not render in OBS&apos;s browser source).</p>
             </label>
           </div>
           <button
-            onClick={() => saveOutputCfg({ blur: 14, box_w: 1, box_h: 1, text_scale: 1 })}
+            onClick={() => saveOutputCfg({ blur: 14, box_w_px: 0, box_h_px: 0, text_scale: 1 })}
             className="text-xs text-ink-mute hover:text-ink cursor-pointer transition-colors duration-150"
           >
             Reset to defaults

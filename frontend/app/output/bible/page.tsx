@@ -40,8 +40,8 @@ function ScripturePanel({
   height,
   fontScale,
   blur,
-  boxW,
-  boxH,
+  boxWpxCfg,
+  boxHpxCfg,
   textScale,
 }: {
   abbreviation: string;
@@ -52,8 +52,8 @@ function ScripturePanel({
   height: number;
   fontScale: number;
   blur: number;
-  boxW: number;
-  boxH: number;
+  boxWpxCfg: number;
+  boxHpxCfg: number;
   textScale: number;
 }) {
   const verses = useMemo(() => parseVerses(content), [content]);
@@ -62,11 +62,11 @@ function ScripturePanel({
     1
   );
 
-  // The box fills boxW × boxH of the panel; text is fitted to the box's own
-  // dimensions (not the panel) so shrinking the box shrinks the text with it
-  // and it stays centered. text_scale then nudges the fitted size up/down.
-  const boxWpx = width * boxW;
-  const boxHpx = height * boxH;
+  // Explicit px box size; 0 falls back to filling the panel. Text is fitted to
+  // the box's own dimensions (not the panel) so a bigger box gets bigger text
+  // automatically and it stays centered. text_scale nudges that up/down.
+  const boxWpx = boxWpxCfg > 0 ? boxWpxCfg : width;
+  const boxHpx = boxHpxCfg > 0 ? boxHpxCfg : height;
   const fill = 0.30; // fraction of box area given to glyphs
   const fitted = Math.sqrt((boxWpx * boxHpx * fill) / plainLength);
   const bodySize = Math.max(14, Math.min(boxWpx * 0.16, fitted)) * fontScale * textScale;
@@ -78,14 +78,16 @@ function ScripturePanel({
       style={{ width, padding: Math.round(width * 0.05) }}
     >
       {/* Frosted glass box: translucent dark + blur + hairline border keeps
-          the text legible over any background behind the capture. box_w/box_h
-          (operator-controlled) set how much of the panel the box fills. */}
+          the text legible over any background behind the capture. box_w_px /
+          box_h_px (operator px controls) size it; 0 = fill the panel. */}
       <div
         key={reference}
         className="fade-swap flex flex-col items-center justify-center text-center rounded-[0.9em] border border-white/20 shadow-2xl overflow-hidden"
         style={{
-          width: `${boxW * 100}%`,
-          height: `${boxH * 100}%`,
+          width: boxWpxCfg > 0 ? boxWpx : '100%',
+          height: boxHpxCfg > 0 ? boxHpx : '100%',
+          maxWidth: '100%',
+          maxHeight: '100%',
           fontSize: bodySize,
           padding: '0.9em 1em',
           backgroundColor: 'rgba(8, 9, 11, 0.55)',
@@ -145,8 +147,8 @@ function BibleOutput() {
   // params are fallbacks so existing capture URLs keep working before anyone
   // touches the controls.
   const [blur, setBlur] = useState<number>(Number(params.get('blur')) || 14);
-  const [boxW, setBoxW] = useState<number>(Number(params.get('boxW')) || 1);
-  const [boxH, setBoxH] = useState<number>(Number(params.get('boxH')) || 1);
+  const [boxWpx, setBoxWpx] = useState<number>(Number(params.get('boxWpx')) || 0);
+  const [boxHpx, setBoxHpx] = useState<number>(Number(params.get('boxHpx')) || 0);
   const [textScale, setTextScale] = useState<number>(Number(params.get('ts')) || 1);
 
   // No auth: this page is a browser-capture source (Resolume/OBS) and cannot
@@ -196,8 +198,8 @@ function BibleOutput() {
         if (alive && cfg.updated_at !== last) {
           last = cfg.updated_at;
           setBlur(cfg.blur);
-          setBoxW(cfg.box_w);
-          setBoxH(cfg.box_h);
+          setBoxWpx(cfg.box_w_px);
+          setBoxHpx(cfg.box_h_px);
           setTextScale(cfg.text_scale);
         }
       } catch {
@@ -230,8 +232,8 @@ function BibleOutput() {
             height={centerH}
             fontScale={fontScale}
             blur={blur}
-            boxW={boxW}
-            boxH={boxH}
+            boxWpxCfg={boxWpx}
+            boxHpxCfg={boxHpx}
             textScale={textScale}
           />
         )}
@@ -261,8 +263,8 @@ function BibleOutput() {
             height={centerH}
             fontScale={fontScale}
             blur={blur}
-            boxW={boxW}
-            boxH={boxH}
+            boxWpxCfg={boxWpx}
+            boxHpxCfg={boxHpx}
             textScale={textScale}
           />
         )}
