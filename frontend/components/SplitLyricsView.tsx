@@ -188,11 +188,14 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
   }, [draggingIndex, handleTouchMove, handleMouseUp]);
 
   const renderLyrics = () => (
-    <div 
-      className="w-full"
-      style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center' }}
-    >
-      <pre className={`whitespace-pre-wrap w-full ${textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'} text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}>
+    // Responsive base font size lives on the wrapper; zoom is applied as an em
+    // multiplier on the <pre> so larger text re-wraps within the frame width
+    // instead of overflowing (which a CSS transform: scale would cause).
+    <div className="w-full text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl">
+      <pre
+        className={`whitespace-pre-wrap break-words w-full ${textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'} text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}
+        style={{ fontSize: `${zoomLevel}em` }}
+      >
         {lyrics}
       </pre>
     </div>

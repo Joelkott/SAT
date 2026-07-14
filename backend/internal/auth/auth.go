@@ -137,6 +137,12 @@ func (s *Service) Middleware() fiber.Handler {
 		if open[c.Path()] {
 			return c.Next()
 		}
+		// Scripture output is read by the Resolume/OBS browser-capture page,
+		// which cannot carry a session. Only the GET (read) is public; the
+		// POST/DELETE that set or clear the wall stay authenticated.
+		if c.Method() == fiber.MethodGet && c.Path() == "/api/live/scripture" {
+			return c.Next()
+		}
 		tok := strings.TrimPrefix(c.Get("Authorization"), "Bearer ")
 		if tok == "" {
 			tok = c.Query("token")
