@@ -167,8 +167,10 @@ export default function SongForm({ song, onSubmit, onCancel, onDelete }: SongFor
             Lyrics <span className="text-danger" aria-hidden>*</span>
           </label>
           <span className="text-xs text-ink-mute">
-            Label sections like <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">[Verse 1]</code>{' '}
-            <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">[Chorus]</code>
+            Start sections inline: <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">1.</code>{' '}
+            <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">Ch:</code>{' '}
+            <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">Br:</code>{' '}
+            <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">Pre Ch:</code>
           </span>
         </div>
         <textarea
@@ -177,7 +179,7 @@ export default function SongForm({ song, onSubmit, onCancel, onDelete }: SongFor
           onChange={(e) => setLyrics(e.target.value)}
           rows={16}
           className={`${inputClass} resize-y min-h-[16rem] leading-relaxed ${indic ? 'script-indic text-base' : ''}`}
-          placeholder={'[Verse 1]\nEnter the lyrics…\n\n[Chorus]\n…'}
+          placeholder={'1. Enter the first verse…\n\nCh: And the chorus…'}
           required
         />
       </div>
