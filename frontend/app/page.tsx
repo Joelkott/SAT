@@ -5,7 +5,8 @@ import SongsPanel from '@/components/SongsPanel';
 import BiblePanel from '@/components/bible/BiblePanel';
 import HelpDialog from '@/components/HelpDialog';
 import EditLogDialog from '@/components/EditLogDialog';
-import { MusicIcon, BookOpenIcon, MonitorIcon, XIcon, EyeIcon, EyeOffIcon, HelpCircleIcon } from '@/components/icons';
+import DisplaySettingsDialog from '@/components/DisplaySettingsDialog';
+import { MusicIcon, BookOpenIcon, MonitorIcon, XIcon, EyeIcon, EyeOffIcon, HelpCircleIcon, SlidersIcon } from '@/components/icons';
 import api from '@/lib/api';
 
 type Tab = 'songs' | 'bible';
@@ -23,6 +24,7 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showEditLog, setShowEditLog] = useState(false);
+  const [showDisplaySettings, setShowDisplaySettings] = useState(false);
   useEffect(() => {
     if (!localStorage.getItem('sat-token')) window.location.href = '/login';
     else { setAuthed(true); setRole(localStorage.getItem('sat-role') || ''); }
@@ -105,6 +107,16 @@ export default function Home() {
             )}
           </div>
 
+          {/* Display settings (site-wide) */}
+          <button
+            onClick={() => setShowDisplaySettings(true)}
+            title="Display settings — line spacing (applies to all devices)"
+            aria-label="Open display settings"
+            className="h-9 w-9 flex items-center justify-center rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer transition-colors duration-150"
+          >
+            <SlidersIcon className="w-4 h-4" />
+          </button>
+
           {/* Help */}
           <button
             onClick={() => setShowHelp(true)}
@@ -162,6 +174,7 @@ export default function Home() {
       {showPw && <PasswordManager onClose={() => setShowPw(false)} />}
       {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
       {showEditLog && <EditLogDialog onClose={() => setShowEditLog(false)} />}
+      {showDisplaySettings && <DisplaySettingsDialog onClose={() => setShowDisplaySettings(false)} />}
 
       <div className={activeTab === 'songs' ? '' : 'hidden'}>
         <SongsPanel />

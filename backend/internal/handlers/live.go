@@ -152,6 +152,44 @@ func (h *Handler) SetOutputConfig(c *fiber.Ctx) error {
 	return c.JSON(cfg)
 }
 
+// DisplayConfig is site-wide lyric display preferences shared by every
+// machine (unlike localStorage prefs which are per-device).
+type DisplayConfig struct {
+	LineSpacing float64 `json:"line_spacing"`
+	UpdatedAt   int64   `json:"updated_at"`
+}
+
+// GetDisplayConfig returns site-wide display prefs. GET /api/display-config
+func (h *Handler) GetDisplayConfig(c *fiber.Ctx) error {
+	ls, updatedAt, err := h.db.GetDisplayConfig()
+	if err != nil {
+		return c.JSON(DisplayConfig{LineSpacing: 1.6, UpdatedAt: 0})
+	}
+	return c.JSON(DisplayConfig{LineSpacing: ls, UpdatedAt: updatedAt})
+}
+
+// SetDisplayConfig updates site-wide display prefs (any signed-in role).
+// PUT /api/display-config
+func (h *Handler) SetDisplayConfig(c *fiber.Ctx) error {
+	var req struct {
+		LineSpacing float64 `json:"line_spacing"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	if req.LineSpacing < 1.0 {
+		req.LineSpacing = 1.0
+	}
+	if req.LineSpacing > 2.6 {
+		req.LineSpacing = 2.6
+	}
+	cfg := DisplayConfig{LineSpacing: req.LineSpacing, UpdatedAt: time.Now().UnixMilli()}
+	if err := h.db.SetDisplayConfig(cfg.LineSpacing, cfg.UpdatedAt); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to save display config"})
+	}
+	return c.JSON(cfg)
+}
+
 // --- Verse suggestions: media team proposes, worship team accepts ---
 
 type liveSuggestion struct {

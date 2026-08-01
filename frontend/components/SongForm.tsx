@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Song, songsApi, CreateSongRequest, UpdateSongRequest } from '@/lib/api';
+import { toggleBoldInTextarea } from '@/components/lyricsFormat';
 
 interface SongFormProps {
   song?: Song | null;
@@ -24,6 +25,7 @@ export default function SongForm({ song, onSubmit, onCancel, onDelete }: SongFor
   const [lyrics, setLyrics] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const lyricsRef = useRef<HTMLTextAreaElement | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -166,17 +168,37 @@ export default function SongForm({ song, onSubmit, onCancel, onDelete }: SongFor
           <label htmlFor="lyrics" className="text-sm font-medium text-ink-dim">
             Lyrics <span className="text-danger" aria-hidden>*</span>
           </label>
-          <span className="text-xs text-ink-mute">
-            Start sections inline: <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">1.</code>{' '}
-            <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">Ch:</code>{' '}
-            <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">Br:</code>{' '}
-            <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">Pre Ch:</code>
+          <span className="flex items-center gap-2 text-xs text-ink-mute">
+            <span>
+              Sections: <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">1.</code>{' '}
+              <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">Ch:</code>{' '}
+              <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">Br:</code>{' '}
+              <code className="text-ink-dim bg-surface-sunken border border-edge rounded px-1 py-px">Pre Ch:</code>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const el = lyricsRef.current;
+                if (el) { setLyrics(toggleBoldInTextarea(el)); el.focus(); }
+              }}
+              title="Bold the selection (Ctrl+B)"
+              className="h-6 w-6 rounded border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer text-xs font-black"
+            >
+              B
+            </button>
           </span>
         </div>
         <textarea
           id="lyrics"
+          ref={lyricsRef}
           value={lyrics}
           onChange={(e) => setLyrics(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+              e.preventDefault();
+              setLyrics(toggleBoldInTextarea(e.currentTarget));
+            }
+          }}
           rows={16}
           className={`${inputClass} resize-y min-h-[16rem] leading-relaxed ${indic ? 'script-indic text-base' : ''}`}
           placeholder={'1. Enter the first verse…\n\nCh: And the chorus…'}

@@ -536,6 +536,23 @@ export const liveApi = {
   },
 };
 
+// Site-wide display preferences (any signed-in role can adjust).
+export interface DisplayConfig {
+  line_spacing: number;
+  updated_at: number;
+}
+
+export const displayConfigApi = {
+  get: async (): Promise<DisplayConfig> => {
+    const response = await api.get<DisplayConfig>('/display-config');
+    return response.data;
+  },
+  set: async (cfg: { line_spacing: number }): Promise<DisplayConfig> => {
+    const response = await api.put<DisplayConfig>('/display-config', cfg);
+    return response.data;
+  },
+};
+
 // Resolume/OBS wall-output layout, set by media/admin, read by /output/bible.
 export interface OutputConfig {
   blur: number;        // backdrop blur radius in px

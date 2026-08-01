@@ -249,6 +249,10 @@ func main() {
 	liveGroup.Get("/output-config", h.GetOutputConfig)
 	liveGroup.Put("/output-config", h.SetOutputConfig)
 
+	// Site-wide display preferences (line spacing etc.) — any signed-in role
+	api.Get("/display-config", h.GetDisplayConfig)
+	api.Put("/display-config", h.SetDisplayConfig)
+
 	// Queue management
 	api.Get("/queue", h.GetQueue)
 	api.Post("/queue", h.AddToQueue)

@@ -3,6 +3,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Song } from '@/lib/api';
 import { PencilIcon, PlayIcon, ListPlusIcon } from '@/components/icons';
+import { stripBold } from '@/components/lyricsFormat';
 
 interface SongListProps {
   songs: Song[];
@@ -101,7 +102,7 @@ function SongList({ songs, onSelectSong, selectedSongId, loading, onEdit, onSend
                     {song.language || 'Unknown'}
                   </span>
                   <span className="text-ink-mute truncate">
-                    {(song.music_ministry_lyrics || song.display_lyrics).substring(0, 80)}
+                    {stripBold(song.music_ministry_lyrics || song.display_lyrics).substring(0, 80)}
                   </span>
                 </div>
               </div>

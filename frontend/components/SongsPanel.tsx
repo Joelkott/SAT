@@ -8,6 +8,7 @@ import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
 import QueuePanel from '@/components/QueuePanel';
 import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon } from '@/components/icons';
+import { FormattedLyrics, toggleBoldInTextarea, useLineSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
 
 export default function SongsPanel() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -58,6 +59,7 @@ export default function SongsPanel() {
   };
   const [inlineEdit, setInlineEdit] = useState(false);
   const [inlineDraft, setInlineDraft] = useState('');
+  const inlineTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [inlineSaving, setInlineSaving] = useState(false);
 
   const startInlineEdit = () => {
@@ -547,7 +549,7 @@ export default function SongsPanel() {
                     ? 'script-indic'
                     : 'leading-relaxed'
                 }`}>
-                  {previewSong.music_ministry_lyrics || previewSong.display_lyrics}
+                  <FormattedLyrics text={previewSong.music_ministry_lyrics || previewSong.display_lyrics} />
                 </pre>
               </div>
             </div>
@@ -798,12 +800,30 @@ export default function SongsPanel() {
               {inlineEdit ? (
                 <div className="bg-black rounded-lg border border-accent/50 overflow-hidden aspect-video w-full relative flex flex-col">
                   <textarea
+                    ref={inlineTextareaRef}
                     value={inlineDraft}
                     onChange={(e) => setInlineDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+                        e.preventDefault();
+                        setInlineDraft(toggleBoldInTextarea(e.currentTarget));
+                      }
+                    }}
                     autoFocus
                     className="flex-1 w-full bg-black text-white text-sm p-4 resize-none focus:outline-none font-sans text-center"
                   />
-                  <div className="flex justify-end gap-2 p-2 border-t border-edge bg-surface-sunken">
+                  <div className="flex items-center gap-2 p-2 border-t border-edge bg-surface-sunken">
+                    <button
+                      onClick={() => {
+                        const el = inlineTextareaRef.current;
+                        if (el) { setInlineDraft(toggleBoldInTextarea(el)); el.focus(); }
+                      }}
+                      title="Bold the selection (Ctrl+B)"
+                      className="h-8 w-8 rounded-md border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer text-sm font-black"
+                    >
+                      B
+                    </button>
+                    <div className="flex-1" />
                     <button
                       onClick={() => setInlineEdit(false)}
                       className="h-8 px-3 rounded-md text-ink-mute hover:text-ink cursor-pointer text-sm"
@@ -904,6 +924,7 @@ function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay }: {
     setW(el.offsetWidth);
     return () => ro.disconnect();
   }, []);
+  const lineSpacing = useLineSpacing();
   return (
     <div ref={boxRef} className="bg-black rounded-lg border border-edge overflow-hidden aspect-video w-full relative">
       <span className={`absolute top-2 left-2 z-10 text-[10px] font-bold tracking-widest bg-black/60 px-1.5 py-0.5 rounded ${badgeClass}`}>
@@ -922,8 +943,11 @@ function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay }: {
           <div className="h-full w-full overflow-y-auto p-12">
             <div className="min-h-full w-full flex items-center justify-center">
               <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} className="w-full">
-                <pre className={`whitespace-pre-wrap text-center w-full text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((song.language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}>
-                  {song.music_ministry_lyrics || song.display_lyrics}
+                <pre
+                  className={`whitespace-pre-wrap text-center w-full text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((song.language || '').toLowerCase()) ? 'script-indic' : ''}`}
+                  style={{ lineHeight: ['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((song.language || '').toLowerCase()) ? lineSpacing + INDIC_EXTRA : lineSpacing }}
+                >
+                  <FormattedLyrics text={song.music_ministry_lyrics || song.display_lyrics} />
                 </pre>
               </div>
             </div>

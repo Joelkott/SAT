@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { FormattedLyrics, useLineSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
 
 interface SplitLyricsViewProps {
   lyrics: string;
@@ -187,16 +188,18 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
     }
   }, [draggingIndex, handleTouchMove, handleMouseUp]);
 
+  const lineSpacing = useLineSpacing();
+  const indic = ['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((language || '').toLowerCase());
   const renderLyrics = () => (
     // Responsive base font size lives on the wrapper; zoom is applied as an em
     // multiplier on the <pre> so larger text re-wraps within the frame width
     // instead of overflowing (which a CSS transform: scale would cause).
     <div className="w-full text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl">
       <pre
-        className={`whitespace-pre-wrap break-words w-full ${textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'} text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((language || '').toLowerCase()) ? 'script-indic' : 'leading-relaxed'}`}
-        style={{ fontSize: `${zoomLevel}em` }}
+        className={`whitespace-pre-wrap break-words w-full ${textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'} text-white ${indic ? 'script-indic' : ''}`}
+        style={{ fontSize: `${zoomLevel}em`, lineHeight: indic ? lineSpacing + INDIC_EXTRA : lineSpacing }}
       >
-        {lyrics}
+        <FormattedLyrics text={lyrics} />
       </pre>
     </div>
   );
