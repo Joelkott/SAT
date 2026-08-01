@@ -71,11 +71,13 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
   };
 
   // Remove a split (can go down to 1 pane)
-  // Keyboard: ] adds a pane, [ removes the last one.
+  // Keyboard: s adds a pane, ; removes the last one.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === ']') { e.preventDefault(); addSplit(); }
-      if (e.key === '[') { e.preventDefault(); removeSplit(panes.length - 1); }
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 's' || e.key === 'S') { e.preventDefault(); addSplit(); }
+      if (e.key === ';') { e.preventDefault(); removeSplit(panes.length - 1); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

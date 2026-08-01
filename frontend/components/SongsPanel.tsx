@@ -341,6 +341,37 @@ export default function SongsPanel() {
     }
   }, [recordOpen, zoomLevel, ppSyncEnabled, ppStatus?.connected]);
 
+  // ProPresenter playlist reconcile: verify every queued song is in the live
+  // playlist (leaving anything else in there untouched). Runs automatically
+  // when sync is switched back on, since queue adds made while it was off
+  // never reached ProPresenter.
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileMsg, setReconcileMsg] = useState('');
+  const runReconcile = useCallback(async (silent: boolean) => {
+    setReconciling(true);
+    if (!silent) setReconcileMsg('');
+    try {
+      const r = await propresenterApi.reconcile();
+      const bits: string[] = [];
+      if (r.added.length) bits.push(`added ${r.added.length}`);
+      if (r.already_present) bits.push(`${r.already_present} already there`);
+      if (r.skipped_no_pro_uuid.length) bits.push(`${r.skipped_no_pro_uuid.length} without a ProPresenter file`);
+      setReconcileMsg(bits.length ? `${r.playlist}: ${bits.join(', ')}` : `${r.playlist}: nothing to add`);
+    } catch (err: any) {
+      console.error('ProPresenter reconcile failed:', err);
+      setReconcileMsg(err?.response?.data?.error || 'Could not check the ProPresenter playlist');
+    } finally {
+      setReconciling(false);
+    }
+  }, []);
+
+  const handleToggleSync = useCallback(() => {
+    const next = !ppSyncEnabled;
+    setPpSyncEnabled(next);
+    // Re-enabling: catch the playlist up on anything queued while it was off.
+    if (next && ppStatus?.connected) runReconcile(true);
+  }, [ppSyncEnabled, ppStatus?.connected, runReconcile]);
+
   // Transient, non-blocking error strip for one-off actions (auto-dismisses).
   const [actionError, setActionError] = useState('');
   useEffect(() => {
@@ -706,21 +737,31 @@ export default function SongsPanel() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setPpSyncEnabled(!ppSyncEnabled)}
+                  onClick={handleToggleSync}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
                     ppSyncEnabled
                       ? 'bg-ok/15 text-ok border border-ok/40 hover:bg-ok/25'
                       : 'bg-surface-hover text-ink-mute border border-edge-strong hover:text-ink-dim'
                   }`}
                   disabled={!ppStatus?.connected}
-                  title={ppSyncEnabled ? 'Click to disable auto-sync' : 'Click to enable auto-sync'}
+                  title={ppSyncEnabled ? 'Click to disable auto-sync' : 'Click to enable auto-sync (re-checks the playlist)'}
                 >
                   {ppSyncEnabled ? 'Sync on' : 'Sync off'}
                 </button>
               </div>
-              {ppStatus?.connected && liveSong && (
-                <div className="text-xs text-ink-mute px-1">
-                  Songs sent to &quot;Live Queue&quot; playlist in ProPresenter
+              {ppStatus?.connected && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => runReconcile(false)}
+                    disabled={reconciling}
+                    className="h-8 px-3 rounded-md border border-edge text-ink-dim hover:text-ink hover:border-accent cursor-pointer text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Check the ProPresenter playlist and add any queued songs that are missing"
+                  >
+                    {reconciling ? 'Checking…' : 'Check playlist'}
+                  </button>
+                  <span className="text-xs text-ink-mute flex-1 truncate" title={reconcileMsg}>
+                    {reconcileMsg || 'Queue syncs to the Live Queue playlist'}
+                  </span>
                 </div>
               )}
             </div>

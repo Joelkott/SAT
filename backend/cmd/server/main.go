@@ -278,6 +278,7 @@ func main() {
 	pp.Get("/library", h.ProPresenterLibrary)
 	pp.Get("/playlists", h.ProPresenterPlaylists)
 	pp.Post("/queue", h.ProPresenterSendToQueue)
+	pp.Post("/reconcile", h.ReconcileProPresenterQueue)
 	pp.Post("/trigger", h.ProPresenterTrigger)
 	pp.Post("/next", h.ProPresenterNextSlide)
 	pp.Post("/previous", h.ProPresenterPreviousSlide)

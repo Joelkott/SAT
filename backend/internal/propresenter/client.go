@@ -443,6 +443,102 @@ func (c *Client) AddToPlaylist(playlistUUID, libraryItemUUID string) error {
 	return nil
 }
 
+// GetPlaylistPresentationUUIDs returns the presentation UUIDs currently in a
+// playlist, in order. Non-presentation rows (headers, media) are skipped.
+func (c *Client) GetPlaylistPresentationUUIDs(playlistUUID string) ([]string, error) {
+	if !c.enabled {
+		return nil, fmt.Errorf("ProPresenter integration is not enabled")
+	}
+	endpoint := fmt.Sprintf("%s/v1/playlist/%s", c.baseURL, playlistUUID)
+	resp, err := c.httpClient.Get(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read playlist: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status %d reading playlist: %s", resp.StatusCode, string(body))
+	}
+	var current struct {
+		Items []struct {
+			PresentationInfo struct {
+				PresentationUUID string `json:"presentation_uuid"`
+			} `json:"presentation_info"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&current); err != nil {
+		return nil, fmt.Errorf("failed to decode playlist: %w", err)
+	}
+	uuids := []string{}
+	for _, it := range current.Items {
+		if u := it.PresentationInfo.PresentationUUID; u != "" {
+			uuids = append(uuids, u)
+		}
+	}
+	return uuids, nil
+}
+
+// EnsureInPlaylist makes sure every UUID in `wanted` is present in the
+// playlist, appending the missing ones after the existing contents. Anything
+// already in the playlist (including items SAT didn't add) is preserved in its
+// current order — nothing is ever removed.
+// Returns the UUIDs that were added.
+func (c *Client) EnsureInPlaylist(playlistUUID string, wanted []string) ([]string, error) {
+	if !c.enabled {
+		return nil, fmt.Errorf("ProPresenter integration is not enabled")
+	}
+
+	existing, err := c.GetPlaylistPresentationUUIDs(playlistUUID)
+	if err != nil {
+		return nil, err
+	}
+	have := make(map[string]bool, len(existing))
+	for _, u := range existing {
+		have[strings.ToLower(u)] = true
+	}
+
+	missing := []string{}
+	seen := map[string]bool{}
+	for _, u := range wanted {
+		key := strings.ToLower(u)
+		if u == "" || have[key] || seen[key] {
+			continue
+		}
+		seen[key] = true
+		missing = append(missing, u)
+	}
+	if len(missing) == 0 {
+		return nil, nil
+	}
+
+	// Existing items first (unchanged order), then the missing queue songs.
+	payload := make([]map[string]interface{}, 0, len(existing)+len(missing))
+	for _, u := range append(append([]string{}, existing...), missing...) {
+		payload = append(payload, map[string]interface{}{
+			"id":   map[string]string{"uuid": u},
+			"type": "presentation",
+		})
+	}
+	body, _ := json.Marshal(payload)
+
+	endpoint := fmt.Sprintf("%s/v1/playlist/%s", c.baseURL, playlistUUID)
+	req, err := http.NewRequest("PUT", endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update playlist: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to update playlist, status %d: %s", resp.StatusCode, string(respBody))
+	}
+	return missing, nil
+}
+
 // TriggerLibraryItem triggers a library item to be displayed
 func (c *Client) TriggerLibraryItem(uuid string) error {
 	if !c.enabled {

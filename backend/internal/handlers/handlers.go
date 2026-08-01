@@ -60,6 +60,113 @@ func (h *Handler) logEdit(c *fiber.Ctx, action string, songID *string, title str
 	}
 }
 
+// resolvePlaylist returns the ProPresenter playlist UUID and name to sync to,
+// looking it up by name (and caching the UUID in settings) when needed.
+func (h *Handler) resolvePlaylist(preferredName string) (uuid string, name string, err error) {
+	settings, err := h.db.GetSettings()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to retrieve settings: %w", err)
+	}
+	uuid = settings.ProPresenterPlaylistUUID
+	if uuid == "" || uuid == "00000000-0000-0000-0000-000000000000" {
+		uuid = settings.LivePlaylistUUID
+	}
+	name = preferredName
+	if name == "" {
+		name = settings.ProPresenterPlaylist
+		if name == "" {
+			name = "Live Queue"
+		}
+	}
+	if uuid == "" || uuid == "00000000-0000-0000-0000-000000000000" {
+		playlists, listErr := h.propresenter.GetPlaylists()
+		if listErr != nil {
+			return "", name, fmt.Errorf("could not list ProPresenter playlists: %w", listErr)
+		}
+		for _, pl := range playlists {
+			if strings.EqualFold(pl.ID.Name, name) {
+				uuid = pl.ID.UUID
+				updates := models.UpdateSettingsRequest{ProPresenterPlaylistUUID: &pl.ID.UUID}
+				h.db.UpdateSettings(&updates)
+				break
+			}
+		}
+	}
+	if uuid == "" || uuid == "00000000-0000-0000-0000-000000000000" {
+		return "", name, fmt.Errorf("playlist %q not found in ProPresenter", name)
+	}
+	return uuid, name, nil
+}
+
+// ReconcileProPresenterQueue makes sure every queued song is present in the
+// ProPresenter live playlist, without disturbing anything already in it.
+// Used when sync is re-enabled after being off, and as a manual "verify" action.
+// POST /api/propresenter/reconcile
+func (h *Handler) ReconcileProPresenterQueue(c *fiber.Ctx) error {
+	if h.propresenter == nil || !h.propresenter.IsEnabled() {
+		return c.Status(400).JSON(fiber.Map{"error": "ProPresenter integration is not enabled"})
+	}
+	if !h.propresenter.IsConnected() {
+		return c.Status(503).JSON(fiber.Map{"error": "ProPresenter is not reachable"})
+	}
+
+	queue, err := h.db.GetQueue()
+	if err != nil {
+		log.Printf("Error reading queue for reconcile: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to read the queue"})
+	}
+
+	playlistUUID, playlistName, err := h.resolvePlaylist("")
+	if err != nil {
+		return c.Status(503).JSON(fiber.Map{"error": err.Error(), "playlist": playlistName})
+	}
+
+	// Queue order is the order they should appear in.
+	wanted := make([]string, 0, len(queue))
+	missingUUID := []string{}
+	titleOf := map[string]string{}
+	for _, item := range queue {
+		if item.Song == nil || item.Song.ProUUID == nil || *item.Song.ProUUID == "" {
+			title := item.SongID
+			if item.Song != nil {
+				title = item.Song.Title
+			}
+			missingUUID = append(missingUUID, title)
+			continue
+		}
+		u := *item.Song.ProUUID
+		wanted = append(wanted, u)
+		titleOf[strings.ToLower(u)] = item.Song.Title
+	}
+
+	added, err := h.propresenter.EnsureInPlaylist(playlistUUID, wanted)
+	if err != nil {
+		log.Printf("Error reconciling ProPresenter playlist: %v", err)
+		return c.Status(503).JSON(fiber.Map{
+			"error":    "Failed to update the ProPresenter playlist",
+			"message":  err.Error(),
+			"playlist": playlistName,
+		})
+	}
+
+	addedTitles := make([]string, 0, len(added))
+	for _, u := range added {
+		if t, ok := titleOf[strings.ToLower(u)]; ok {
+			addedTitles = append(addedTitles, t)
+		} else {
+			addedTitles = append(addedTitles, u)
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"playlist":            playlistName,
+		"queue_songs":         len(queue),
+		"added":               addedTitles,
+		"already_present":     len(wanted) - len(added),
+		"skipped_no_pro_uuid": missingUUID,
+	})
+}
+
 // GetEditLogs returns recent audit entries (admin only, mounted under /admin).
 func (h *Handler) GetEditLogs(c *fiber.Ctx) error {
 	logs, err := h.db.GetEditLogs(c.QueryInt("limit", 200))

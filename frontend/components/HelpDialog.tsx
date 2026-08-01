@@ -116,7 +116,7 @@ export default function HelpDialog({ onClose }: HelpDialogProps) {
             <ShortcutRow keys={['+', '-']}>Zoom lyrics in / out</ShortcutRow>
             <ShortcutRow keys={['0']}>Reset zoom</ShortcutRow>
             <ShortcutRow keys={['L', 'C', 'R']}>Align text left / center / right</ShortcutRow>
-            <ShortcutRow keys={[']', '[']}>Add / remove a split pane</ShortcutRow>
+            <ShortcutRow keys={['S', ';']}>Add / remove a split pane</ShortcutRow>
           </Section>
         </div>
       </div>

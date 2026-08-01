@@ -229,6 +229,14 @@ export interface ProPresenterQueueResult {
   pp_item_uuid: string;
 }
 
+export interface ProPresenterReconcileResult {
+  playlist: string;
+  queue_songs: number;
+  added: string[];
+  already_present: number;
+  skipped_no_pro_uuid: string[];
+}
+
 export const propresenterApi = {
   // Get ProPresenter connection status
   getStatus: async (): Promise<ProPresenterStatus> => {
@@ -256,6 +264,13 @@ export const propresenterApi = {
       song_title: songTitle,
       playlist_name: playlistName,
     });
+    return response.data;
+  },
+
+  // Make sure every queued song is in the ProPresenter live playlist without
+  // disturbing anything already there. Run when sync is re-enabled.
+  reconcile: async (): Promise<ProPresenterReconcileResult> => {
+    const response = await api.post<ProPresenterReconcileResult>('/propresenter/reconcile');
     return response.data;
   },
 
