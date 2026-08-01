@@ -9,14 +9,18 @@ interface DisplaySettingsDialogProps {
 }
 
 export default function DisplaySettingsDialog({ onClose }: DisplaySettingsDialogProps) {
-  const [spacing, setSpacing] = useState(1.6);
+  const [line, setLine] = useState(1.6);
+  const [para, setPara] = useState(1.0);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     displayConfigApi
       .get()
-      .then((c) => { if (c.line_spacing) setSpacing(c.line_spacing); })
+      .then((c) => {
+        if (c.line_spacing) setLine(c.line_spacing);
+        if (c.paragraph_spacing !== undefined) setPara(c.paragraph_spacing);
+      })
       .catch(() => {})
       .finally(() => setLoaded(true));
   }, []);
@@ -29,10 +33,16 @@ export default function DisplaySettingsDialog({ onClose }: DisplaySettingsDialog
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const save = (value: number) => {
-    setSpacing(value);
+  const save = (next: { line?: number; para?: number }) => {
+    const l = next.line ?? line;
+    const p = next.para ?? para;
+    setLine(l);
+    setPara(p);
     setSaving(true);
-    displayConfigApi.set({ line_spacing: value }).catch(() => {}).finally(() => setSaving(false));
+    displayConfigApi
+      .set({ line_spacing: l, paragraph_spacing: p })
+      .catch(() => {})
+      .finally(() => setSaving(false));
   };
 
   return (
@@ -55,29 +65,62 @@ export default function DisplaySettingsDialog({ onClose }: DisplaySettingsDialog
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-5">
           <label className="block">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-sm text-ink-dim">Lyrics line spacing</span>
+              <span className="text-sm text-ink-dim">Line spacing</span>
+              <span className="text-xs text-ink-mute tabular-nums">{line.toFixed(2)}×</span>
+            </div>
+            <input
+              type="range"
+              min={0.8}
+              max={2.6}
+              step={0.05}
+              value={line}
+              disabled={!loaded}
+              onChange={(e) => save({ line: Number(e.target.value) })}
+              className="w-full accent-accent cursor-pointer disabled:opacity-50"
+            />
+            <p className="text-xs text-ink-mute mt-1.5">
+              Gap between lines within a verse. 1.0× means lines just touch — go below
+              only if you need to squeeze a long song in.
+            </p>
+          </label>
+
+          <label className="block">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-sm text-ink-dim">Paragraph spacing</span>
               <span className="text-xs text-ink-mute tabular-nums">
-                {saving ? 'Saving…' : `${spacing.toFixed(2)}×`}
+                {para === 0 ? 'none' : `${para.toFixed(2)}×`}
               </span>
             </div>
             <input
               type="range"
-              min={1.0}
-              max={2.6}
+              min={0}
+              max={3}
               step={0.05}
-              value={spacing}
+              value={para}
               disabled={!loaded}
-              onChange={(e) => save(Number(e.target.value))}
+              onChange={(e) => save({ para: Number(e.target.value) })}
               className="w-full accent-accent cursor-pointer disabled:opacity-50"
             />
             <p className="text-xs text-ink-mute mt-1.5">
-              Applies live to the display window, previews, and every other machine within
-              a few seconds. Indic scripts automatically get a little extra room.
+              Gap between verses/chorus blocks. 0 runs sections together; 0.5× is half a
+              line, like Word&apos;s paragraph spacing.
             </p>
           </label>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs text-ink-mute">
+              {saving ? 'Saving…' : 'Applies to every device within a few seconds'}
+            </span>
+            <button
+              onClick={() => save({ line: 1.6, para: 1.0 })}
+              className="text-xs text-ink-mute hover:text-ink cursor-pointer transition-colors duration-150"
+            >
+              Reset to defaults
+            </button>
+          </div>
         </div>
       </div>
     </div>

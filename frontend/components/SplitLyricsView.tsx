@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { FormattedLyrics, useLineSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
+import { LyricBlocks, useLyricSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
 
 interface SplitLyricsViewProps {
   lyrics: string;
@@ -188,7 +188,7 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
     }
   }, [draggingIndex, handleTouchMove, handleMouseUp]);
 
-  const lineSpacing = useLineSpacing();
+  const spacing = useLyricSpacing();
   const indic = ['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((language || '').toLowerCase());
   const renderLyrics = () => (
     // Responsive base font size lives on the wrapper; zoom is applied as an em
@@ -197,9 +197,13 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
     <div className="w-full text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl">
       <pre
         className={`whitespace-pre-wrap break-words w-full ${textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'} text-white ${indic ? 'script-indic' : ''}`}
-        style={{ fontSize: `${zoomLevel}em`, lineHeight: indic ? lineSpacing + INDIC_EXTRA : lineSpacing }}
+        style={{ fontSize: `${zoomLevel}em` }}
       >
-        <FormattedLyrics text={lyrics} />
+        <LyricBlocks
+          text={lyrics}
+          lineHeight={indic ? spacing.line + INDIC_EXTRA : spacing.line}
+          paragraphSpacing={spacing.paragraph}
+        />
       </pre>
     </div>
   );

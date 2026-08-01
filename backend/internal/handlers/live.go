@@ -35,12 +35,22 @@ type OutputConfig struct {
 	Blur      int     `json:"blur"`       // backdrop blur radius in px
 	BoxWpx    int     `json:"box_w_px"`   // box width in px; 0 = fill the side panel
 	BoxHpx    int     `json:"box_h_px"`   // box height in px; 0 = fill the IMAG band
-	TextScale float64 `json:"text_scale"` // 0.5..2.0 multiplier on the auto-fitted text size
+	TextScale float64 `json:"text_scale"` // 0.5..1.0 — text auto-fits the box, so this can only pull it back
 	UpdatedAt int64   `json:"updated_at"` // unix millis
 }
 
 func defaultOutputConfig() OutputConfig {
 	return OutputConfig{Blur: 14, BoxWpx: 0, BoxHpx: 0, TextScale: 1.0, UpdatedAt: 0}
+}
+
+func clampf(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 func clampi(v, lo, hi int) int {
@@ -57,12 +67,8 @@ func clampOutputConfig(cfg OutputConfig) OutputConfig {
 	cfg.Blur = clampi(cfg.Blur, 0, 60)
 	cfg.BoxWpx = clampi(cfg.BoxWpx, 0, 6000) // 0 = auto
 	cfg.BoxHpx = clampi(cfg.BoxHpx, 0, 6000)
-	if cfg.TextScale < 0.5 {
-		cfg.TextScale = 0.5
-	}
-	if cfg.TextScale > 2.0 {
-		cfg.TextScale = 2.0
-	}
+	// Text auto-fits its box; the operator scale only shrinks from that.
+	cfg.TextScale = clampf(cfg.TextScale, 0.5, 1.0)
 	return cfg
 }
 
@@ -155,36 +161,36 @@ func (h *Handler) SetOutputConfig(c *fiber.Ctx) error {
 // DisplayConfig is site-wide lyric display preferences shared by every
 // machine (unlike localStorage prefs which are per-device).
 type DisplayConfig struct {
-	LineSpacing float64 `json:"line_spacing"`
-	UpdatedAt   int64   `json:"updated_at"`
+	LineSpacing      float64 `json:"line_spacing"`
+	ParagraphSpacing float64 `json:"paragraph_spacing"` // multiplier on the blank-line gap between sections
+	UpdatedAt        int64   `json:"updated_at"`
 }
 
 // GetDisplayConfig returns site-wide display prefs. GET /api/display-config
 func (h *Handler) GetDisplayConfig(c *fiber.Ctx) error {
-	ls, updatedAt, err := h.db.GetDisplayConfig()
+	ls, ps, updatedAt, err := h.db.GetDisplayConfig()
 	if err != nil {
-		return c.JSON(DisplayConfig{LineSpacing: 1.6, UpdatedAt: 0})
+		return c.JSON(DisplayConfig{LineSpacing: 1.6, ParagraphSpacing: 1.0, UpdatedAt: 0})
 	}
-	return c.JSON(DisplayConfig{LineSpacing: ls, UpdatedAt: updatedAt})
+	return c.JSON(DisplayConfig{LineSpacing: ls, ParagraphSpacing: ps, UpdatedAt: updatedAt})
 }
 
 // SetDisplayConfig updates site-wide display prefs (any signed-in role).
 // PUT /api/display-config
 func (h *Handler) SetDisplayConfig(c *fiber.Ctx) error {
 	var req struct {
-		LineSpacing float64 `json:"line_spacing"`
+		LineSpacing      float64 `json:"line_spacing"`
+		ParagraphSpacing float64 `json:"paragraph_spacing"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
-	if req.LineSpacing < 1.0 {
-		req.LineSpacing = 1.0
+	cfg := DisplayConfig{
+		LineSpacing:      clampf(req.LineSpacing, 0.8, 2.6),
+		ParagraphSpacing: clampf(req.ParagraphSpacing, 0, 3.0),
+		UpdatedAt:        time.Now().UnixMilli(),
 	}
-	if req.LineSpacing > 2.6 {
-		req.LineSpacing = 2.6
-	}
-	cfg := DisplayConfig{LineSpacing: req.LineSpacing, UpdatedAt: time.Now().UnixMilli()}
-	if err := h.db.SetDisplayConfig(cfg.LineSpacing, cfg.UpdatedAt); err != nil {
+	if err := h.db.SetDisplayConfig(cfg.LineSpacing, cfg.ParagraphSpacing, cfg.UpdatedAt); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to save display config"})
 	}
 	return c.JSON(cfg)

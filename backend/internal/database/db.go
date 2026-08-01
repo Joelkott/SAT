@@ -53,28 +53,30 @@ func (db *DB) ensureDisplayConfigTable() error {
 		CREATE TABLE IF NOT EXISTS display_config (
 			id INT PRIMARY KEY DEFAULT 1,
 			line_spacing DOUBLE PRECISION NOT NULL DEFAULT 1.6,
+			paragraph_spacing DOUBLE PRECISION NOT NULL DEFAULT 1.0,
 			updated_at BIGINT NOT NULL DEFAULT 0,
 			CONSTRAINT display_config_singleton CHECK (id = 1)
 		);
+		ALTER TABLE display_config ADD COLUMN IF NOT EXISTS paragraph_spacing DOUBLE PRECISION NOT NULL DEFAULT 1.0;
 		INSERT INTO display_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 	`)
 	return err
 }
 
 // GetDisplayConfig returns the site-wide display preferences.
-func (db *DB) GetDisplayConfig() (lineSpacing float64, updatedAt int64, err error) {
-	err = db.QueryRow(`SELECT line_spacing, updated_at FROM display_config WHERE id = 1`).
-		Scan(&lineSpacing, &updatedAt)
+func (db *DB) GetDisplayConfig() (lineSpacing, paragraphSpacing float64, updatedAt int64, err error) {
+	err = db.QueryRow(`SELECT line_spacing, paragraph_spacing, updated_at FROM display_config WHERE id = 1`).
+		Scan(&lineSpacing, &paragraphSpacing, &updatedAt)
 	return
 }
 
 // SetDisplayConfig persists the site-wide display preferences.
-func (db *DB) SetDisplayConfig(lineSpacing float64, updatedAt int64) error {
+func (db *DB) SetDisplayConfig(lineSpacing, paragraphSpacing float64, updatedAt int64) error {
 	_, err := db.Exec(`
-		INSERT INTO display_config (id, line_spacing, updated_at)
-		VALUES (1, $1, $2)
-		ON CONFLICT (id) DO UPDATE SET line_spacing = $1, updated_at = $2
-	`, lineSpacing, updatedAt)
+		INSERT INTO display_config (id, line_spacing, paragraph_spacing, updated_at)
+		VALUES (1, $1, $2, $3)
+		ON CONFLICT (id) DO UPDATE SET line_spacing = $1, paragraph_spacing = $2, updated_at = $3
+	`, lineSpacing, paragraphSpacing, updatedAt)
 	return err
 }
 

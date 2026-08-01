@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { liveApi, LiveScripture } from '@/lib/api';
 import { parseVerses } from '@/components/bible/verseUtils';
+import { useFitText } from '@/components/bible/scriptureFit';
 
 // Chrome-less scripture output for LED wall capture (Resolume/OBS browser
 // source). Renders two side panels flanking the IMAG region. The IMAG is a
@@ -41,6 +42,7 @@ function ScripturePanel({
   fontScale,
   blur,
   textScale,
+  guides,
 }: {
   abbreviation: string;
   reference: string;
@@ -51,58 +53,74 @@ function ScripturePanel({
   fontScale: number;
   blur: number;
   textScale: number;
+  guides?: boolean;
 }) {
   const verses = useMemo(() => parseVerses(content), [content]);
-  const plainLength = Math.max(
-    verses.reduce((n, v) => n + v.text.length, 0),
-    1
-  );
 
-  // Text is fitted to the box's ACTUAL rendered px size, so it never outgrows
-  // the box; text_scale nudges that up/down. The box itself fills its parent,
-  // which is sized/positioned by the caller.
-  const fill = 0.30; // fraction of box area given to glyphs
-  const fitted = Math.sqrt((boxWpx * boxHpx * fill) / plainLength);
-  const bodySize = Math.max(12, Math.min(boxWpx * 0.16, fitted)) * fontScale * textScale;
-  const refSize = Math.max(14, Math.min(boxWpx * 0.11, bodySize * 0.72)) * fontScale;
+  // Each panel measures its OWN text against its OWN box and picks the largest
+  // font that still fits, so both languages fill their boxes independently: a
+  // short English verse scales right up while a long Malayalam one stays in
+  // bounds. text_scale nudges the fitted result.
+  // Malayalam/Devanagari glyphs read visually smaller than Latin at the same
+  // px size (smaller x-height, plus the taller line boxes conjuncts need), so
+  // Indic scripts use more of their fitted maximum to end up optically equal.
+  const { areaRef, textRef, fontSize } = useFitText(
+    [content, boxWpx, boxHpx, indic, textScale, fontScale],
+    { min: 10, maxFactor: indic ? 0.36 : 0.32, comfort: indic ? 1 : 0.85 }
+  );
+  // The fitted size is the largest that fits, so the operator scale can only
+  // pull it BACK (a multiplier above 1 would push text out of the box).
+  const scale = Math.min(1, (fontScale || 1) * (textScale || 1));
 
   return (
     <div
       key={reference}
-      className="fade-swap w-full h-full flex flex-col items-center justify-center text-center rounded-[0.9em] border border-white/20 shadow-2xl overflow-hidden"
+      className="fade-swap w-full h-full rounded-[0.9em] border border-white/20 shadow-2xl overflow-hidden"
       style={{
-        fontSize: bodySize,
-        padding: '0.9em 1em',
+        padding: '4%',
         backgroundColor: 'rgba(8, 9, 11, 0.55)',
         backdropFilter: `blur(${blur}px)`,
         WebkitBackdropFilter: `blur(${blur}px)`,
       }}
     >
-        {/* ProPresenter-style reference: white box, black text */}
+      <div
+        ref={areaRef}
+        className={`w-full h-full flex items-center justify-center overflow-hidden ${
+          guides ? 'outline outline-1 outline-dashed outline-[#4ade80]/70' : ''
+        }`}
+      >
         <div
-          className="inline-block bg-white text-black font-bold mb-[0.9em] rounded-[0.12em]"
-          style={{ fontSize: refSize, padding: '0.18em 0.55em' }}
+          ref={textRef}
+          className="w-full text-center"
+          style={{ fontSize: fontSize * scale }}
         >
-          {reference}
-          <span className="font-semibold opacity-60"> {abbreviation}</span>
+          {/* ProPresenter-style reference: white box, black text */}
+          <div
+            className="inline-block bg-white text-black font-bold rounded-[0.12em]"
+            style={{ fontSize: '0.62em', padding: '0.18em 0.55em', marginBottom: '0.7em' }}
+          >
+            {reference}
+            <span className="font-semibold opacity-60"> {abbreviation}</span>
+          </div>
+          {/* Scripture body: plain white text */}
+          <div
+            className={`text-white ${indic ? 'script-indic' : ''}`}
+            style={{ lineHeight: indic ? 1.4 : 1.3 }}
+          >
+            {verses.map((v, i) => (
+              <span key={v.num}>
+                {verses.length > 1 && (
+                  <sup className="text-[0.55em] font-bold text-white/60 mr-[0.35em]">
+                    {v.num}
+                  </sup>
+                )}
+                {v.text}
+                {i < verses.length - 1 ? ' ' : ''}
+              </span>
+            ))}
+          </div>
         </div>
-        {/* Scripture body: plain white text */}
-        <div
-          className={`text-white ${indic ? 'script-indic' : ''}`}
-          style={{ lineHeight: indic ? 1.9 : 1.5 }}
-        >
-          {verses.map((v, i) => (
-            <span key={v.num}>
-              {verses.length > 1 && (
-                <sup className="text-[0.55em] font-bold text-white/60 mr-[0.35em]">
-                  {v.num}
-                </sup>
-              )}
-              {v.text}
-              {i < verses.length - 1 ? ' ' : ''}
-            </span>
-          ))}
-        </div>
+      </div>
     </div>
   );
 }
@@ -221,6 +239,7 @@ function BibleOutput() {
             fontScale={fontScale}
             blur={blur}
             textScale={textScale}
+            guides={guides}
           />
         )}
       </div>
@@ -247,6 +266,7 @@ function BibleOutput() {
             fontScale={fontScale}
             blur={blur}
             textScale={textScale}
+            guides={guides}
           />
         )}
       </div>

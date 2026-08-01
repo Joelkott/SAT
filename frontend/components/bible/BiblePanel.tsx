@@ -865,12 +865,15 @@ export default function BiblePanel() {
                 <span className="text-xs text-ink-mute tabular-nums">{Math.round(outputCfg.text_scale * 100)}%</span>
               </div>
               <input
-                type="range" min={0.5} max={2} step={0.05}
-                value={outputCfg.text_scale}
+                type="range" min={0.5} max={1} step={0.05}
+                value={Math.min(1, outputCfg.text_scale)}
                 onChange={(e) => saveOutputCfg({ ...outputCfg, text_scale: Number(e.target.value) })}
                 className="w-full accent-accent cursor-pointer"
               />
-              <p className="text-xs text-ink-mute mt-1">Text auto-fits the box; this nudges it up or down.</p>
+              <p className="text-xs text-ink-mute mt-1">
+                Text already fills the box automatically — 100% is as large as it fits; lower it for
+                more breathing room.
+              </p>
             </label>
             <label className="block">
               <div className="flex items-center justify-between mb-1.5">

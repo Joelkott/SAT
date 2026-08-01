@@ -8,7 +8,7 @@ import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
 import QueuePanel from '@/components/QueuePanel';
 import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon } from '@/components/icons';
-import { FormattedLyrics, toggleBoldInTextarea, useLineSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
+import { FormattedLyrics, LyricBlocks, toggleBoldInTextarea, useLyricSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
 
 export default function SongsPanel() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -924,7 +924,7 @@ function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay }: {
     setW(el.offsetWidth);
     return () => ro.disconnect();
   }, []);
-  const lineSpacing = useLineSpacing();
+  const spacing = useLyricSpacing();
   return (
     <div ref={boxRef} className="bg-black rounded-lg border border-edge overflow-hidden aspect-video w-full relative">
       <span className={`absolute top-2 left-2 z-10 text-[10px] font-bold tracking-widest bg-black/60 px-1.5 py-0.5 rounded ${badgeClass}`}>
@@ -945,9 +945,12 @@ function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay }: {
               <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} className="w-full">
                 <pre
                   className={`whitespace-pre-wrap text-center w-full text-5xl text-white ${['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((song.language || '').toLowerCase()) ? 'script-indic' : ''}`}
-                  style={{ lineHeight: ['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((song.language || '').toLowerCase()) ? lineSpacing + INDIC_EXTRA : lineSpacing }}
                 >
-                  <FormattedLyrics text={song.music_ministry_lyrics || song.display_lyrics} />
+                  <LyricBlocks
+                    text={song.music_ministry_lyrics || song.display_lyrics}
+                    lineHeight={['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'].includes((song.language || '').toLowerCase()) ? spacing.line + INDIC_EXTRA : spacing.line}
+                    paragraphSpacing={spacing.paragraph}
+                  />
                 </pre>
               </div>
             </div>

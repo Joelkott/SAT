@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Song } from '@/lib/api';
 import SplitLyricsView from '@/components/SplitLyricsView';
 import { parseVerses } from '@/components/bible/verseUtils';
+import { useFitText } from '@/components/bible/scriptureFit';
 
 interface ScriptureColumn {
   abbreviation: string;
@@ -13,6 +14,45 @@ interface ScriptureColumn {
 }
 
 type DisplaySong = Pick<Song, 'id' | 'title' | 'artist' | 'display_lyrics' | 'music_ministry_lyrics' | 'language'>;
+
+/** One stacked scripture half. Measures its own text against its own half of
+ *  the screen and picks the largest font that fits, so each language fills its
+ *  space independently and as large as the screen allows. */
+function ScriptureRow({ col }: { col: ScriptureColumn }) {
+  const verses = useMemo(() => parseVerses(col.content), [col.content]);
+  const { areaRef, textRef, fontSize } = useFitText([col.content, col.indic], {
+    min: 14,
+    maxFactor: 0.62,
+  });
+
+  return (
+    <div ref={areaRef} className="fade-swap flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+      <div ref={textRef} className="w-full text-center" style={{ fontSize }}>
+        <div
+          className="inline-block bg-white text-black font-bold rounded-[0.12em]"
+          style={{ fontSize: '0.5em', padding: '0.12em 0.5em', marginBottom: '0.5em' }}
+        >
+          {col.reference}
+          <span className="font-semibold opacity-60"> {col.abbreviation}</span>
+        </div>
+        <div
+          className={`text-white ${col.indic ? 'script-indic' : ''}`}
+          style={{ lineHeight: col.indic ? 1.45 : 1.25 }}
+        >
+          {verses.map((v, vi) => (
+            <span key={v.num}>
+              {verses.length > 1 && (
+                <sup className="text-[0.55em] font-bold text-white/60 mr-[0.35em]">{v.num}</sup>
+              )}
+              {v.text}
+              {vi < verses.length - 1 ? ' ' : ''}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Display() {
   const [song, setSong] = useState<DisplaySong | null>(null);
@@ -66,16 +106,21 @@ export default function Display() {
     if (!localStorage.getItem('sat-token')) window.location.href = '/login';
   }, []);
 
-  // Load last pushed song from localStorage
+  // Load last pushed song from localStorage. Payloads cached by older builds
+  // may lack the lyric fields entirely — discard those rather than rendering
+  // an empty/broken song.
   useEffect(() => {
     const saved = localStorage.getItem('lyrics-display-current');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as DisplaySong;
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved) as DisplaySong;
+      if (parsed && (parsed.music_ministry_lyrics || parsed.display_lyrics)) {
         setSong(parsed);
-      } catch (_) {
-        // ignore parse errors
+      } else {
+        localStorage.removeItem('lyrics-display-current');
       }
+    } catch {
+      localStorage.removeItem('lyrics-display-current');
     }
   }, []);
 
@@ -191,36 +236,18 @@ export default function Display() {
         </button>
       </div>
 
-      {/* Scripture (from Bible tab) takes precedence over the song */}
+      {/* Scripture (from Bible tab) takes precedence over the song.
+          Stacked: English on top, Malayalam below — each half sizes its own
+          text independently so a long passage in one language never shrinks
+          (or dwarfs) the other. */}
       {scripture && scripture.length > 0 ? (
-        <div className="h-full w-full flex items-stretch justify-center gap-6 p-4">
-          {scripture.slice(0, 2).map((col, i) => {
-            const verses = parseVerses(col.content);
-            return (
-              <div key={`${i}-${col.reference}`} className="fade-swap flex-1 flex flex-col items-center justify-center text-center">
-                <div className="inline-block bg-white text-black font-bold rounded-[0.12em] mb-6 text-2xl md:text-3xl px-4 py-1.5">
-                  {col.reference}
-                  <span className="font-semibold opacity-60"> {col.abbreviation}</span>
-                </div>
-                <div
-                  className={`text-white text-3xl md:text-4xl lg:text-5xl ${col.indic ? 'script-indic' : 'leading-relaxed'}`}
-                >
-                  {verses.map((v, vi) => (
-                    <span key={v.num}>
-                      {verses.length > 1 && (
-                        <sup className="text-[0.55em] font-bold text-white/60 mr-[0.35em]">{v.num}</sup>
-                      )}
-                      {v.text}
-                      {vi < verses.length - 1 ? ' ' : ''}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+        <div className="h-full w-full flex flex-col items-stretch p-2 gap-2">
+          {scripture.slice(0, 2).map((col, i) => (
+            <ScriptureRow key={`${i}-${col.reference}`} col={col} />
+          ))}
         </div>
       ) : song ? (
-        <SplitLyricsView lyrics={song.music_ministry_lyrics || song.display_lyrics} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} songId={song.id} />
+        <SplitLyricsView lyrics={song.music_ministry_lyrics || song.display_lyrics || ''} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} songId={song.id} />
       ) : (
         <div className="h-full w-full flex items-center justify-center">
           <div className="text-center">
