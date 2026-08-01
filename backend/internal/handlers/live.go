@@ -186,7 +186,7 @@ func (h *Handler) SetDisplayConfig(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 	cfg := DisplayConfig{
-		LineSpacing:      clampf(req.LineSpacing, 0.8, 2.6),
+		LineSpacing:      clampf(req.LineSpacing, 0.6, 2.6),
 		ParagraphSpacing: clampf(req.ParagraphSpacing, 0, 3.0),
 		UpdatedAt:        time.Now().UnixMilli(),
 	}

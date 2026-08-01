@@ -73,7 +73,7 @@ export default function DisplaySettingsDialog({ onClose }: DisplaySettingsDialog
             </div>
             <input
               type="range"
-              min={0.8}
+              min={0.6}
               max={2.6}
               step={0.05}
               value={line}
@@ -82,8 +82,8 @@ export default function DisplaySettingsDialog({ onClose }: DisplaySettingsDialog
               className="w-full accent-accent cursor-pointer disabled:opacity-50"
             />
             <p className="text-xs text-ink-mute mt-1.5">
-              Gap between lines within a verse. 1.0× means lines just touch — go below
-              only if you need to squeeze a long song in.
+              Gap between lines within a verse. Below 1.0× the lines start to overlap —
+              useful for packing a long song onto one screen.
             </p>
           </label>
 
