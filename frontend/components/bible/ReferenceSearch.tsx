@@ -31,7 +31,7 @@ export default function ReferenceSearch({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Go to reference — John 3:16, Psalm 23, Gen 1:1-5"
+        placeholder="Go to reference — John 3:16, Psalm 23, Ps 112:2 NLT"
         disabled={isLoading}
         aria-label="Go to Bible reference"
         className="w-full h-10 bg-surface-input border border-edge hover:border-edge-strong focus:border-accent rounded-lg pl-10 pr-16 text-ink placeholder:text-ink-mute text-sm outline-none transition-colors duration-150 disabled:opacity-60"

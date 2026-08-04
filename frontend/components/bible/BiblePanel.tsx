@@ -244,16 +244,69 @@ export default function BiblePanel() {
     setSelection(null);
   }, []);
 
+  // Resolve a typed translation abbreviation ("nlt", "kjv", "mov") to a Bible
+  // id. Several catalog entries can share an abbreviation, so prefer an exact
+  // match, then the bundled local copies, then anything whose abbreviation
+  // ends with the token (e.g. "engKJV" for "kjv").
+  const findTranslationByAbbrev = useCallback((token: string): string | null => {
+    const q = token.trim().toLowerCase();
+    if (!q) return null;
+    const score = (t: BibleTranslation) => {
+      const a = (t.abbreviation || '').toLowerCase();
+      const al = (t.abbreviationLocal || '').toLowerCase();
+      if (a === q || al === q) return t.id.startsWith('local-') ? 0 : 1;
+      // Edition-suffixed names: "niv" -> NIV11, "nasb" -> NASB1995.
+      if (a.startsWith(q)) return 2;
+      // Language-prefixed names: "kjv" -> engKJV.
+      if (a.endsWith(q)) return 3;
+      return 99;
+    };
+    const best = translations
+      .map((t) => ({ t, s: score(t) }))
+      .filter((x) => x.s < 99)
+      // Shorter abbreviation wins a tie: NIV11 over NIVUK11.
+      .sort((x, y) => x.s - y.s || x.t.abbreviation.length - y.t.abbreviation.length)[0];
+    return best ? best.t.id : null;
+  }, [translations]);
+
   const handleReferenceSearch = useCallback(async (reference: string) => {
     const trimmed = reference.trim();
     if (!trimmed) return;
 
     // Normalize separators so "gen 1 20", "gen 1:20", "gen 1 : 20", and
     // "gen 1 20-25" / "gen 1 20 25" all parse the same way.
-    const normalized = trimmed
+    let normalized = trimmed
       .replace(/\s+/g, ' ')
       .replace(/\s*:\s*/g, ':')
       .replace(/\s*-\s*/g, '-');
+
+    // A trailing translation abbreviation switches the FIRST column and leaves
+    // the others alone: "ps 112 2 nlt" -> Psalm 112:2 in NLT, Malayalam intact.
+    // Only strip it when a parseable reference remains (so "mov" alone, or a
+    // book whose name matches an abbreviation, isn't swallowed).
+    let searchBibleId = primaryBibleId;
+    const parts = normalized.split(' ');
+    if (parts.length >= 3) {
+      const last = parts[parts.length - 1];
+      if (!/\d/.test(last)) {
+        const targetId = findTranslationByAbbrev(last);
+        if (targetId) {
+          normalized = parts.slice(0, -1).join(' ');
+          searchBibleId = targetId;
+          setSelectedBibleIds((prev) => {
+            if (prev[0] === targetId) return prev;
+            const at = prev.indexOf(targetId);
+            if (at > 0) {
+              // Already shown in another column — promote it instead of duplicating.
+              const next = [...prev];
+              [next[0], next[at]] = [next[at], next[0]];
+              return next;
+            }
+            return prev.map((id, i) => (i === 0 ? targetId : id));
+          });
+        }
+      }
+    }
 
     // [\p{L}\p{M}] accepts non-Latin book names — Indic scripts need \p{M}
     // for combining vowel signs/conjuncts (e.g. യോഹന്നാൻ).
@@ -290,7 +343,7 @@ export default function BiblePanel() {
 
     try {
       setError(null);
-      const chaptersData = await bibleApi.getChapters(primaryBibleId, matchedBook.id);
+      const chaptersData = await bibleApi.getChapters(searchBibleId, matchedBook.id);
       const matchedChapter = chaptersData.find((c) => c.number === chapterNum);
       if (!matchedChapter) {
         setError('Reference not found. Try a format like John 3:16 or Gen 1:1-5.');
@@ -308,7 +361,7 @@ export default function BiblePanel() {
       console.error('Error searching reference:', err);
       setError('Reference not found. Try a format like John 3:16 or Gen 1:1-5.');
     }
-  }, [books, primaryBibleId]);
+  }, [books, primaryBibleId, findTranslationByAbbrev]);
 
   const handleBreadcrumbClick = useCallback((level: 'root' | 'book') => {
     if (level === 'root') {

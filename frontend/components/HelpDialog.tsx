@@ -105,6 +105,11 @@ export default function HelpDialog({ onClose }: HelpDialogProps) {
           <Section title="Bible tab">
             <ShortcutRow keys={['←', '→']}>Step to the previous / next verse (flows across chapters)</ShortcutRow>
             <div className="px-3 py-2 text-sm text-ink-dim">
+              Add a translation abbreviation to the end of a reference to switch the first
+              column: <span className="text-ink">Ps 112:2 NLT</span> shows that verse in the New
+              Living Translation while the other column (e.g. Malayalam) stays as it is.
+            </div>
+            <div className="px-3 py-2 text-sm text-ink-dim">
               Your last five passages appear as chips under the toolbar. Use{' '}
               <span className="text-ink">Pin</span> in the actions row to keep a passage there
               permanently — handy for the sermon&apos;s key verses.
