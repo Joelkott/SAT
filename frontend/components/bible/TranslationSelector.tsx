@@ -1,7 +1,9 @@
 'use client';
 
+import { useMemo } from 'react';
 import { BibleTranslation } from '@/lib/api';
 import { ChevronDownIcon } from '@/components/icons';
+import { groupTranslations } from '@/components/bible/translationGroups';
 
 interface TranslationSelectorProps {
   translations: BibleTranslation[];
@@ -16,6 +18,10 @@ export default function TranslationSelector({
   onSelect,
   isLoading,
 }: TranslationSelectorProps) {
+  // ~279 entries: group them so the list is navigable (grouping is pure, so
+  // memoising on the array reference is enough).
+  const groups = useMemo(() => groupTranslations(translations), [translations]);
+
   return (
     <div className="relative">
       <select
@@ -35,10 +41,14 @@ export default function TranslationSelector({
             No Bible translations available. Check the API configuration.
           </option>
         )}
-        {translations.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.abbreviationLocal || t.abbreviation} — {t.nameLocal || t.name}
-          </option>
+        {groups.map((g) => (
+          <optgroup key={g.label} label={g.label}>
+            {g.items.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.abbreviationLocal || t.abbreviation} — {t.nameLocal || t.name}
+              </option>
+            ))}
+          </optgroup>
         ))}
       </select>
       <ChevronDownIcon className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none" />

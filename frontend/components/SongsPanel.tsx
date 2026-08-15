@@ -10,6 +10,16 @@ import QueuePanel from '@/components/QueuePanel';
 import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon, ClipboardIcon, CheckIcon } from '@/components/icons';
 import { FormattedLyrics, LyricBlocks, toggleBoldInTextarea, useLyricSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
 import { useScrollMemory } from '@/lib/scrollMemory';
+import {
+  DEFAULT_ALIGN,
+  DEFAULT_FONT,
+  FONT_OPTIONS,
+  TextAlign,
+  readAlign,
+  readFontFamily,
+  setAlign,
+  setFontFamily,
+} from '@/lib/displayPrefs';
 
 export default function SongsPanel() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -63,6 +73,22 @@ export default function SongsPanel() {
   };
   const [inlineEdit, setInlineEdit] = useState(false);
   const [inlineDraft, setInlineDraft] = useState('');
+  // Quick-edit formatting: alignment and font are display-wide preferences, so
+  // the toolbar previews them in the textarea and broadcasts them to /display.
+  const [align, setAlignState] = useState<TextAlign>(DEFAULT_ALIGN);
+  const [fontFamily, setFontFamilyState] = useState(DEFAULT_FONT);
+  useEffect(() => {
+    setAlignState(readAlign());
+    setFontFamilyState(readFontFamily());
+  }, []);
+  const applyAlign = (a: TextAlign) => {
+    setAlignState(a);
+    setAlign(a, displayChannelRef.current);
+  };
+  const applyFontFamily = (f: string) => {
+    setFontFamilyState(f);
+    setFontFamily(f, displayChannelRef.current);
+  };
   const inlineTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [inlineSaving, setInlineSaving] = useState(false);
 
@@ -925,7 +951,8 @@ export default function SongsPanel() {
                       }
                     }}
                     autoFocus
-                    className="flex-1 w-full bg-black text-white text-sm p-4 resize-none focus:outline-none font-sans text-center"
+                    style={{ fontFamily, textAlign: align }}
+                    className="flex-1 w-full bg-black text-white text-sm p-4 resize-none focus:outline-none"
                   />
                   <div className="flex items-center gap-2 p-2 border-t border-edge bg-surface-sunken">
                     <button
@@ -938,6 +965,37 @@ export default function SongsPanel() {
                     >
                       B
                     </button>
+                    <span className="w-px h-4 bg-edge" aria-hidden />
+                    {(['left', 'center', 'right'] as const).map((a) => (
+                      <button
+                        key={a}
+                        onClick={() => applyAlign(a)}
+                        aria-pressed={align === a}
+                        title={`Align ${a} on the display (${a[0].toUpperCase()})`}
+                        className={`h-8 w-8 rounded-md border flex flex-col justify-center gap-[3px] px-2 cursor-pointer transition-colors ${
+                          a === 'left' ? 'items-start' : a === 'right' ? 'items-end' : 'items-center'
+                        } ${
+                          align === a
+                            ? 'border-accent/50 bg-accent/15 text-accent-hover'
+                            : 'border-edge text-ink-dim hover:text-ink hover:border-edge-strong'
+                        }`}
+                      >
+                        <span className="block h-[1.5px] w-full bg-current rounded" />
+                        <span className="block h-[1.5px] w-3/5 bg-current rounded" />
+                        <span className="block h-[1.5px] w-4/5 bg-current rounded" />
+                      </button>
+                    ))}
+                    <select
+                      value={fontFamily}
+                      onChange={(e) => applyFontFamily(e.target.value)}
+                      aria-label="Display font"
+                      title="Display font"
+                      className="h-8 rounded-md border border-edge bg-surface-input text-ink text-xs px-2 cursor-pointer hover:border-edge-strong focus:border-accent focus:outline-none"
+                    >
+                      {FONT_OPTIONS.map((f) => (
+                        <option key={f.value} value={f.value}>{f.label}</option>
+                      ))}
+                    </select>
                     <div className="flex-1" />
                     <button
                       onClick={() => setInlineEdit(false)}

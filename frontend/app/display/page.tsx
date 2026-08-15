@@ -5,6 +5,17 @@ import { Song } from '@/lib/api';
 import SplitLyricsView from '@/components/SplitLyricsView';
 import { parseVerses } from '@/components/bible/verseUtils';
 import { useFitText } from '@/components/bible/scriptureFit';
+import {
+  ALIGN_KEY,
+  FONT_KEY,
+  DEFAULT_ALIGN,
+  DEFAULT_FONT,
+  TextAlign,
+  isTextAlign,
+  readAlign,
+  readFontFamily,
+  setAlign,
+} from '@/lib/displayPrefs';
 
 interface ScriptureColumn {
   abbreviation: string;
@@ -57,17 +68,23 @@ function ScriptureRow({ col }: { col: ScriptureColumn }) {
 export default function Display() {
   const [song, setSong] = useState<DisplaySong | null>(null);
   const [scripture, setScripture] = useState<ScriptureColumn[] | null>(null);
-  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
+  const [textAlign, setTextAlign] = useState<TextAlign>(DEFAULT_ALIGN);
+  const [fontFamily, setFontFamilyState] = useState(DEFAULT_FONT);
+  const channelRef = useRef<BroadcastChannel | null>(null);
 
-  // Restore alignment preference
+  // Restore alignment + font preferences
   useEffect(() => {
-    const saved = localStorage.getItem('lyrics-text-align');
-    if (saved === 'left' || saved === 'center' || saved === 'right') setTextAlign(saved);
+    setTextAlign(readAlign());
+    setFontFamilyState(readFontFamily());
   }, []);
-  const applyAlign = (a: 'left' | 'center' | 'right') => {
+  // Route through displayPrefs so this window and the control window's
+  // quick-edit toolbar stay in step whichever end changes the alignment.
+  const applyAlign = (a: TextAlign) => {
     setTextAlign(a);
-    localStorage.setItem('lyrics-text-align', a);
+    setAlign(a, channelRef.current);
   };
+  const applyAlignRef = useRef(applyAlign);
+  applyAlignRef.current = applyAlign;
   const [zoomLevel, setZoomLevel] = useState(1.0);
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -140,9 +157,9 @@ export default function Display() {
         e.preventDefault();
         setZoomLevel(1.0);
       }
-      if (e.key === 'l') setTextAlign('left');
-      if (e.key === 'c') setTextAlign('center');
-      if (e.key === 'r') setTextAlign('right');
+      if (e.key === 'l') applyAlignRef.current('left');
+      if (e.key === 'c') applyAlignRef.current('center');
+      if (e.key === 'r') applyAlignRef.current('right');
       if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         if (document.fullscreenElement) {
@@ -160,6 +177,7 @@ export default function Display() {
   // Listen for broadcasts from the control window
   useEffect(() => {
     const channel = new BroadcastChannel('lyrics-display');
+    channelRef.current = channel;
     channel.onmessage = (event) => {
       const data = event.data;
       if (data?.type === 'song' && data.song) {
@@ -183,12 +201,27 @@ export default function Display() {
       if (data?.type === 'zoom' && typeof data.zoomLevel === 'number') {
         setZoomLevel(data.zoomLevel);
       }
+      if (data?.type === 'align' && isTextAlign(data.textAlign)) {
+        setTextAlign(data.textAlign);
+        localStorage.setItem(ALIGN_KEY, data.textAlign);
+      }
+      // SettingsDialog has broadcast this for a while; nothing consumed it
+      // until now.
+      if (data?.type === 'displaySettings' && typeof data.fontFamily === 'string') {
+        setFontFamilyState(data.fontFamily);
+        localStorage.setItem(FONT_KEY, data.fontFamily);
+      }
     };
-    return () => channel.close();
+    return () => {
+      channel.close();
+      channelRef.current = null;
+    };
   }, []);
 
   return (
-    <div className="h-screen w-screen bg-black text-white overflow-hidden relative">
+    // fontFamily on the root so SplitLyricsView and the scripture columns
+    // inherit it.
+    <div className="h-screen w-screen bg-black text-white overflow-hidden relative" style={{ fontFamily }}>
       {/* Floating controls — a single quiet pill that fades away when idle */}
       <div
         className={`
