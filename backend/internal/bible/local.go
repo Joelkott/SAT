@@ -12,9 +12,11 @@ import (
 // Bundled Bibles served locally (no api.bible dependency).
 // KJV + Malayalam OV come from getbible.net exports (data/generate.py);
 // AMPC from a Zefania XML (data/convert_zefania.py); ASV from a bibleapi
-// resultset JSON (data/convert_bibleapi.py).
+// resultset JSON (data/convert_bibleapi.py); BBE + MKJV from scrollmapper
+// JSON exports (data/convert_scrollmapper.py); CEB from a YouVersion-shaped
+// JSON export (data/convert_youversion.py).
 //
-//go:embed data/kjv.json data/mal_ov_1910.json data/ampc.json data/asv.json
+//go:embed data/kjv.json data/mal_ov_1910.json data/ampc.json data/asv.json data/bbe.json data/mkjv.json data/ceb.json
 var localData embed.FS
 
 // USFM book IDs in canonical (Protestant) order — matches api.bible book IDs.
@@ -155,6 +157,33 @@ func NewLocalProvider() *LocalProvider {
 		AbbreviationLocal: "ASV",
 		Description:       "Public-domain ASV (1901), bundled locally",
 		DescriptionLocal:  "Public-domain ASV (1901), bundled locally",
+		Language:          Language{ID: "eng", Name: "English", NameLocal: "English", Script: "Latin", Direction: "ltr"},
+	}, nil)
+	load("local-bbe", "data/bbe.json", Bible{
+		Name:              "Bible in Basic English (1949/1964)",
+		NameLocal:         "Bible in Basic English",
+		Abbreviation:      "BBE",
+		AbbreviationLocal: "BBE",
+		Description:       "Public-domain Bible in Basic English, bundled locally",
+		DescriptionLocal:  "Public-domain Bible in Basic English, bundled locally",
+		Language:          Language{ID: "eng", Name: "English", NameLocal: "English", Script: "Latin", Direction: "ltr"},
+	}, nil)
+	load("local-mkjv", "data/mkjv.json", Bible{
+		Name:              "Modern King James Version",
+		NameLocal:         "Modern King James Version",
+		Abbreviation:      "MKJV",
+		AbbreviationLocal: "MKJV",
+		Description:       "Modern King James Version, bundled locally",
+		DescriptionLocal:  "Modern King James Version, bundled locally",
+		Language:          Language{ID: "eng", Name: "English", NameLocal: "English", Script: "Latin", Direction: "ltr"},
+	}, nil)
+	load("local-ceb", "data/ceb.json", Bible{
+		Name:              "Common English Bible (2011)",
+		NameLocal:         "Common English Bible",
+		Abbreviation:      "CEB",
+		AbbreviationLocal: "CEB",
+		Description:       "Common English Bible (2011), bundled locally",
+		DescriptionLocal:  "Common English Bible (2011), bundled locally",
 		Language:          Language{ID: "eng", Name: "English", NameLocal: "English", Script: "Latin", Direction: "ltr"},
 	}, nil)
 

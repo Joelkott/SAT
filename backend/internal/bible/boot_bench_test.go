@@ -54,8 +54,33 @@ func TestLocalProviderLoadTime(t *testing.T) {
 		t.Errorf("ASV JHN.3.16 = %q, err %v; want ASV wording", sv.Text, err)
 	}
 
-	if n := len(lp.Bibles()); n != 4 {
-		t.Errorf("bundled bibles = %d, want 4", n)
+	// BBE: 1949/1964 basic-English wording.
+	bv, err := lp.GetVerse("local-bbe", "JHN.3.16")
+	if err != nil || !strings.Contains(bv.Text, "For God had such love for the world") {
+		t.Errorf("BBE JHN.3.16 = %q, err %v; want BBE wording", bv.Text, err)
+	}
+
+	// MKJV: modern-literal wording, with supplied-word braces unwrapped.
+	mkv, err := lp.GetVerse("local-mkjv", "JHN.3.16")
+	if err != nil || !strings.Contains(mkv.Text, "only-begotten Son") {
+		t.Errorf("MKJV JHN.3.16 = %q, err %v; want MKJV wording", mkv.Text, err)
+	}
+	jos, err := lp.GetVerse("local-mkjv", "JOS.7.13")
+	if err != nil {
+		t.Fatalf("MKJV JOS.7.13 lookup failed: %v", err)
+	}
+	if strings.Contains(jos.Text, "{") || strings.Contains(jos.Text, "}") {
+		t.Errorf("MKJV JOS.7.13 still has supplied-word braces: %q", jos.Text)
+	}
+
+	// CEB: contemporary wording with curly apostrophes preserved.
+	cv, err := lp.GetVerse("local-ceb", "JHN.3.16")
+	if err != nil || !strings.Contains(cv.Text, "God so loved the world") || !strings.Contains(cv.Text, "won’t perish") {
+		t.Errorf("CEB JHN.3.16 = %q, err %v; want CEB wording with curly apostrophe", cv.Text, err)
+	}
+
+	if n := len(lp.Bibles()); n != 7 {
+		t.Errorf("bundled bibles = %d, want 7", n)
 	}
 }
 
