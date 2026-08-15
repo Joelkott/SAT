@@ -7,7 +7,7 @@ import SongList from '@/components/SongList';
 import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
 import QueuePanel from '@/components/QueuePanel';
-import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon, ClipboardIcon, CheckIcon } from '@/components/icons';
+import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon } from '@/components/icons';
 import { FormattedLyrics, LyricBlocks, toggleBoldInTextarea, useLyricSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
 import { useScrollMemory } from '@/lib/scrollMemory';
 import {
@@ -430,51 +430,6 @@ export default function SongsPanel() {
     }
   }, []);
 
-  // Copy the queued song titles (one per line) so the setlist can be pasted
-  // into WhatsApp/notes for the team.
-  const [copied, setCopied] = useState(false);
-  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); }, []);
-
-  const writeClipboard = async (text: string) => {
-    // The church LAN serves plain HTTP, where navigator.clipboard is undefined,
-    // so fall back to the old execCommand trick on an off-screen textarea.
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-    const el = document.createElement('textarea');
-    el.value = text;
-    el.setAttribute('readonly', '');
-    el.style.position = 'fixed';
-    el.style.left = '-9999px';
-    document.body.appendChild(el);
-    el.select();
-    try {
-      document.execCommand('copy');
-    } finally {
-      document.body.removeChild(el);
-    }
-  };
-
-  const handleCopySetlist = useCallback(async () => {
-    try {
-      const items = await queueApi.getAll();
-      const text = items.map((i) => i.song?.title).filter(Boolean).join('\n');
-      if (!text) {
-        setActionError('The queue is empty — nothing to copy.');
-        return;
-      }
-      await writeClipboard(text);
-      setCopied(true);
-      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
-      copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
-    } catch (error) {
-      console.error('Error copying setlist:', error);
-      setActionError("Couldn't copy the setlist. Try again.");
-    }
-  }, []);
-
   const handleCreateNew = () => {
     setEditingSong(null);
     setShowForm(true);
@@ -711,20 +666,6 @@ export default function SongsPanel() {
                 {queueCount}
               </span>
             )}
-          </button>
-          <button
-            onClick={handleCopySetlist}
-            disabled={queueCount === 0}
-            aria-label="Copy setlist"
-            title="Copy the setlist (song titles) to the clipboard"
-            className={`shrink-0 h-[46px] flex items-center justify-center gap-2 rounded-lg border cursor-pointer text-sm font-medium transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
-              copied
-                ? 'px-4 bg-ok/10 border-ok/50 text-ok'
-                : 'w-[46px] bg-surface-raised border-edge text-ink-dim hover:text-ink hover:border-accent'
-            }`}
-          >
-            {copied ? <CheckIcon className="w-5 h-5" /> : <ClipboardIcon className="w-5 h-5" />}
-            {copied && 'Copied!'}
           </button>
           <button
             onClick={handleCreateNew}

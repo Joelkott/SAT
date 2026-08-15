@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { queueApi, QueueItem, Song } from '@/lib/api';
-import { MusicIcon, PlayIcon, XIcon } from '@/components/icons';
+import { MusicIcon, PlayIcon, XIcon, ClipboardIcon, CheckIcon } from '@/components/icons';
 import {
   DndContext,
   closestCenter,
@@ -232,6 +232,47 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
     }
   };
 
+  // Copy the setlist (queued song titles, one per line) so it can be pasted
+  // into WhatsApp/notes for the team. Uses the queue already on screen.
+  const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); }, []);
+
+  const handleCopySetlist = async () => {
+    const text = queue.map((i) => i.song?.title).filter(Boolean).join('\n');
+    if (!text) {
+      setError('The queue is empty — nothing to copy.');
+      return;
+    }
+    try {
+      setError(null);
+      // The church LAN serves plain HTTP, where navigator.clipboard is
+      // undefined, so fall back to execCommand on an off-screen textarea.
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const el = document.createElement('textarea');
+        el.value = text;
+        el.setAttribute('readonly', '');
+        el.style.position = 'fixed';
+        el.style.left = '-9999px';
+        document.body.appendChild(el);
+        el.select();
+        try {
+          document.execCommand('copy');
+        } finally {
+          document.body.removeChild(el);
+        }
+      }
+      setCopied(true);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      console.error('Failed to copy setlist:', err);
+      setError("Couldn't copy the setlist. Try again.");
+    }
+  };
+
   return (
     <div className="h-full bg-surface-raised border border-edge rounded-xl overflow-hidden fade-swap">
       <div className="h-full flex flex-col">
@@ -245,14 +286,30 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
               </span>
             )}
           </div>
-          <button
-            onClick={onToggle}
-            className="p-1.5 rounded-md text-ink-mute hover:text-ink hover:bg-surface-hover cursor-pointer transition-colors duration-150"
-            title="Close queue"
-            aria-label="Close queue"
-          >
-            <XIcon className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {copied && (
+              <span className="text-xs font-medium text-ok fade-swap">Copied!</span>
+            )}
+            <button
+              onClick={handleCopySetlist}
+              disabled={queue.length === 0}
+              className={`p-1.5 rounded-md cursor-pointer transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
+                copied ? 'text-ok bg-ok/15' : 'text-ink-mute hover:text-ink hover:bg-surface-hover'
+              }`}
+              title="Copy the setlist (song titles) to the clipboard"
+              aria-label="Copy setlist"
+            >
+              {copied ? <CheckIcon className="w-4 h-4" /> : <ClipboardIcon className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={onToggle}
+              className="p-1.5 rounded-md text-ink-mute hover:text-ink hover:bg-surface-hover cursor-pointer transition-colors duration-150"
+              title="Close queue"
+              aria-label="Close queue"
+            >
+              <XIcon className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Error message */}
