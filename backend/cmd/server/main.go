@@ -281,8 +281,8 @@ func main() {
 	api.Get("/settings", h.GetSettings)
 	api.Put("/settings", auth.RequireAdmin, h.UpdateSettings)
 
-	// ProPresenter integration
-	pp := api.Group("/propresenter")
+	// ProPresenter integration (closed to the guest role)
+	pp := api.Group("/propresenter", auth.RequireProPresenter)
 	pp.Get("/status", h.ProPresenterStatus)
 	pp.Get("/library", h.ProPresenterLibrary)
 	pp.Get("/playlists", h.ProPresenterPlaylists)

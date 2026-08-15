@@ -16,8 +16,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Team-account auth: three roles (admin/media/worship), bcrypt passwords in
-// Postgres, stateless HMAC-signed bearer tokens (no external dependency).
+// Team-account auth: four roles (admin/media/worship/guest), bcrypt passwords
+// in Postgres, stateless HMAC-signed bearer tokens (no external dependency).
+// guest is worship minus ProPresenter — songs, queue, Bible and the display
+// window, but no control over the presentation software running the service.
 
 type claims struct {
 	Username string `json:"u"`
@@ -39,20 +41,30 @@ func New(db *sql.DB) *Service {
 	return &Service{db: db, secret: []byte(secret)}
 }
 
-// Bootstrap ensures the users table and three team accounts exist, using
+// Bootstrap ensures the users table and the four team accounts exist, using
 // AUTH_<ROLE>_PASSWORD env vars (falling back to changeme-<role>).
 func (s *Service) Bootstrap() {
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS users (
 		id SERIAL PRIMARY KEY,
 		username TEXT UNIQUE NOT NULL,
 		password_hash TEXT NOT NULL,
-		role TEXT NOT NULL CHECK (role IN ('admin', 'media', 'worship')),
+		role TEXT NOT NULL CHECK (role IN ('admin', 'media', 'worship', 'guest')),
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	)`); err != nil {
 		log.Printf("⚠️  auth bootstrap (create table): %v", err)
 		return
 	}
-	for _, role := range []string{"admin", "media", "worship"} {
+	// Existing installs already have the narrower three-role CHECK, and
+	// CREATE TABLE IF NOT EXISTS will not widen it. Postgres names the inline
+	// constraint users_role_check, so drop-then-add keeps this re-runnable.
+	// Never fatal — a stricter constraint only blocks the guest insert below.
+	if _, err := s.db.Exec(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`); err != nil {
+		log.Printf("⚠️  auth bootstrap (drop role check): %v", err)
+	}
+	if _, err := s.db.Exec(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','media','worship','guest'))`); err != nil {
+		log.Printf("⚠️  auth bootstrap (add role check): %v", err)
+	}
+	for _, role := range []string{"admin", "media", "worship", "guest"} {
 		var n int
 		if err := s.db.QueryRow(`SELECT count(*) FROM users WHERE username=$1`, role).Scan(&n); err != nil || n > 0 {
 			continue
@@ -164,6 +176,16 @@ func (s *Service) Middleware() fiber.Handler {
 func RequireAdmin(c *fiber.Ctx) error {
 	if r, _ := c.Locals("role").(string); r != "admin" {
 		return c.Status(403).JSON(fiber.Map{"error": "Admin access required"})
+	}
+	return c.Next()
+}
+
+// RequireProPresenter gates live-presentation control. The guest role gets the
+// song database, queue, Bible and display but never touches the presentation
+// software running the service.
+func RequireProPresenter(c *fiber.Ctx) error {
+	if r, _ := c.Locals("role").(string); r == "guest" {
+		return c.Status(403).JSON(fiber.Map{"error": "ProPresenter control is not available for this account"})
 	}
 	return c.Next()
 }
