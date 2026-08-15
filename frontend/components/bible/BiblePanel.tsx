@@ -437,6 +437,8 @@ export default function BiblePanel() {
   }, []);
 
   // Team role: media proposes verses, worship gets an accept prompt.
+  // guest is deliberately not in the union — it falls through to the default
+  // 'worship' behaviour, which is exactly what a guest operator should get.
   const [role, setRole] = useState<'media' | 'worship' | 'admin'>('worship');
   useEffect(() => {
     const saved = localStorage.getItem('sat-role');

@@ -7,7 +7,7 @@ import SongList from '@/components/SongList';
 import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
 import QueuePanel from '@/components/QueuePanel';
-import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon } from '@/components/icons';
+import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon, ClipboardIcon, CheckIcon } from '@/components/icons';
 import { FormattedLyrics, LyricBlocks, toggleBoldInTextarea, useLyricSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
 import { useScrollMemory } from '@/lib/scrollMemory';
 
@@ -43,6 +43,9 @@ export default function SongsPanel() {
   const [hoverSong, setHoverSong] = useState<Song | null>(null);
   const [role, setRoleState] = useState('');
   useEffect(() => { setRoleState(localStorage.getItem('sat-role') || ''); }, []);
+  // guest is worship minus ProPresenter: the backend 403s /api/propresenter/*,
+  // so the UI must neither show the card (see the role check on the card below)
+  // nor make the calls (see the guest early-returns in the pp handlers).
   const displayChannelRef = useRef<BroadcastChannel | null>(null);
   const [leftWidth, setLeftWidth] = useState(0.6);
   const [isDragging, setIsDragging] = useState(false);
@@ -109,6 +112,12 @@ export default function SongsPanel() {
 
   // Check ProPresenter connection status
   const checkProPresenterStatus = async () => {
+    // Read localStorage rather than the `role` state: the mount effect calls
+    // this before the role state has settled.
+    if (typeof window !== 'undefined' && localStorage.getItem('sat-role') === 'guest') {
+      setPpStatus({ enabled: false, connected: false, message: 'Not available for this account' });
+      return;
+    }
     try {
       const status = await propresenterApi.getStatus();
       setPpStatus(status);
@@ -329,8 +338,9 @@ export default function SongsPanel() {
       });
     }
 
-    // Sync with ProPresenter if enabled and connected
-    if (ppSyncEnabled && ppStatus?.connected) {
+    // Sync with ProPresenter if enabled and connected (never for guest)
+    const isGuest = typeof window !== 'undefined' && localStorage.getItem('sat-role') === 'guest';
+    if (!isGuest && ppSyncEnabled && ppStatus?.connected) {
       setPpSyncing(true);
       try {
         await propresenterApi.sendToQueue(song.id, song.title);
@@ -349,6 +359,9 @@ export default function SongsPanel() {
   const [reconciling, setReconciling] = useState(false);
   const [reconcileMsg, setReconcileMsg] = useState('');
   const runReconcile = useCallback(async (silent: boolean) => {
+    // Only reachable from the (hidden) ProPresenter card, but guard anyway —
+    // the endpoint 403s for guest.
+    if (typeof window !== 'undefined' && localStorage.getItem('sat-role') === 'guest') return;
     setReconciling(true);
     if (!silent) setReconcileMsg('');
     try {
@@ -388,6 +401,51 @@ export default function SongsPanel() {
     } catch (error: any) {
       console.error('Error adding song to queue:', error);
       setActionError(`Couldn't add "${song.title}" to the queue. Try again.`);
+    }
+  }, []);
+
+  // Copy the queued song titles (one per line) so the setlist can be pasted
+  // into WhatsApp/notes for the team.
+  const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); }, []);
+
+  const writeClipboard = async (text: string) => {
+    // The church LAN serves plain HTTP, where navigator.clipboard is undefined,
+    // so fall back to the old execCommand trick on an off-screen textarea.
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.setAttribute('readonly', '');
+    el.style.position = 'fixed';
+    el.style.left = '-9999px';
+    document.body.appendChild(el);
+    el.select();
+    try {
+      document.execCommand('copy');
+    } finally {
+      document.body.removeChild(el);
+    }
+  };
+
+  const handleCopySetlist = useCallback(async () => {
+    try {
+      const items = await queueApi.getAll();
+      const text = items.map((i) => i.song?.title).filter(Boolean).join('\n');
+      if (!text) {
+        setActionError('The queue is empty — nothing to copy.');
+        return;
+      }
+      await writeClipboard(text);
+      setCopied(true);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch (error) {
+      console.error('Error copying setlist:', error);
+      setActionError("Couldn't copy the setlist. Try again.");
     }
   }, []);
 
@@ -629,6 +687,20 @@ export default function SongsPanel() {
             )}
           </button>
           <button
+            onClick={handleCopySetlist}
+            disabled={queueCount === 0}
+            aria-label="Copy setlist"
+            title="Copy the setlist (song titles) to the clipboard"
+            className={`shrink-0 h-[46px] flex items-center justify-center gap-2 rounded-lg border cursor-pointer text-sm font-medium transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
+              copied
+                ? 'px-4 bg-ok/10 border-ok/50 text-ok'
+                : 'w-[46px] bg-surface-raised border-edge text-ink-dim hover:text-ink hover:border-accent'
+            }`}
+          >
+            {copied ? <CheckIcon className="w-5 h-5" /> : <ClipboardIcon className="w-5 h-5" />}
+            {copied && 'Copied!'}
+          </button>
+          <button
             onClick={handleCreateNew}
             aria-label="Add new song"
             title="Add new song"
@@ -704,7 +776,7 @@ export default function SongsPanel() {
             style={{ flexBasis: `${(1 - leftWidth) * 100}%`, minWidth: '25%' }}
           >
             {/* ProPresenter Integration (not shown to worship) */}
-            {role !== 'worship' && (
+            {role !== 'worship' && role !== 'guest' && (
             <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-semibold text-ink-mute uppercase tracking-wider">ProPresenter</div>

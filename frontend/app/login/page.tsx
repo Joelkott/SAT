@@ -47,7 +47,7 @@ export default function LoginPage() {
             onChange={(e) => setUsername(e.target.value)}
             autoFocus
             autoComplete="username"
-            placeholder="media, worship or admin"
+            placeholder="media, worship, guest or admin"
             className="w-full px-4 py-2.5 bg-surface-input text-ink border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute"
           />
         </div>

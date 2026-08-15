@@ -85,7 +85,7 @@ export default function Home() {
           {/* Global actions */}
           {/* Outputs: role-gated */}
           <div className="flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5">
-            {(role === 'worship' || role === 'admin') && (
+            {(role === 'worship' || role === 'guest' || role === 'admin') && (
               <button
                 onClick={() => window.open('/display', '_blank', 'noopener,noreferrer')}
                 title="Open the congregation display window"
@@ -187,7 +187,7 @@ export default function Home() {
 }
 
 function PasswordManager({ onClose }: { onClose: () => void }) {
-  const [values, setValues] = useState<Record<string, string>>({ admin: '', media: '', worship: '' });
+  const [values, setValues] = useState<Record<string, string>>({ admin: '', media: '', worship: '', guest: '' });
   const [status, setStatus] = useState<Record<string, string>>({});
   const [show, setShow] = useState<Record<string, boolean>>({});
 
@@ -217,7 +217,7 @@ function PasswordManager({ onClose }: { onClose: () => void }) {
         <p className="text-xs text-ink-mute">
           Set a new password for any team account. You only need to remember the admin one.
         </p>
-        {(['admin', 'media', 'worship'] as const).map((user) => (
+        {(['admin', 'media', 'worship', 'guest'] as const).map((user) => (
           <div key={user} className="flex items-center gap-2">
             <span className="w-20 text-sm font-medium text-ink-dim capitalize shrink-0">{user}</span>
             <div className="relative flex-1 min-w-0">
