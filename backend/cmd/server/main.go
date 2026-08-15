@@ -153,17 +153,19 @@ func main() {
 	})
 	bibleLocal := bible.NewLocalProvider()
 	bibleESV := bible.NewEsvProvider(esvAPIKey)
-	bibleHandler := bible.NewHandler(bibleClient, bibleLocal, bibleESV)
+	bibleNET := bible.NewNetProvider()
+	bibleHandler := bible.NewHandler(bibleClient, bibleLocal, bibleESV, bibleNET)
 	if bibleClient.IsConfigured() {
-		log.Println("Bible integration enabled (api.bible + local KJV/MOV/AMPC/ASV)")
+		log.Println("Bible integration enabled (api.bible + local KJV/MOV/AMPC/ASV/BBE/MKJV/CEB)")
 	} else {
-		log.Println("Bible integration enabled (local KJV/MOV/AMPC/ASV only — no API_BIBLE_KEY)")
+		log.Println("Bible integration enabled (local KJV/MOV/AMPC/ASV/BBE/MKJV/CEB only — no API_BIBLE_KEY)")
 	}
 	if bibleESV.IsConfigured() {
 		log.Println("ESV enabled (api.esv.org)")
 	} else {
 		log.Println("ESV disabled — no ESV_API_KEY")
 	}
+	log.Println("NET enabled (labs.bible.org)")
 
 	// Initialize handlers
 	h := handlers.New(db, ts, backupManager, ppClient, skipTypesense)
