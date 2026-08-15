@@ -144,18 +144,25 @@ func main() {
 	// Bible API configuration (optional)
 	bibleAPIKey := os.Getenv("API_BIBLE_KEY")
 	bibleBaseURL := os.Getenv("API_BIBLE_BASE_URL")
+	esvAPIKey := os.Getenv("ESV_API_KEY")
 
-	// api.bible client (optional) + bundled local Bibles (always available).
+	// api.bible client (optional) + ESV (optional) + bundled local Bibles (always available).
 	bibleClient := bible.New(&bible.Config{
 		APIKey:  bibleAPIKey,
 		BaseURL: bibleBaseURL,
 	})
 	bibleLocal := bible.NewLocalProvider()
-	bibleHandler := bible.NewHandler(bibleClient, bibleLocal)
+	bibleESV := bible.NewEsvProvider(esvAPIKey)
+	bibleHandler := bible.NewHandler(bibleClient, bibleLocal, bibleESV)
 	if bibleClient.IsConfigured() {
-		log.Println("Bible integration enabled (api.bible + local KJV/MOV)")
+		log.Println("Bible integration enabled (api.bible + local KJV/MOV/AMPC/ASV)")
 	} else {
-		log.Println("Bible integration enabled (local KJV/MOV only — no API_BIBLE_KEY)")
+		log.Println("Bible integration enabled (local KJV/MOV/AMPC/ASV only — no API_BIBLE_KEY)")
+	}
+	if bibleESV.IsConfigured() {
+		log.Println("ESV enabled (api.esv.org)")
+	} else {
+		log.Println("ESV disabled — no ESV_API_KEY")
 	}
 
 	// Initialize handlers
