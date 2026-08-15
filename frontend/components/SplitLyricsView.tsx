@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { LyricBlocks, useLyricSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
+import { useScrollMemory, useIsomorphicLayoutEffect } from '@/lib/scrollMemory';
 
 interface SplitLyricsViewProps {
   lyrics: string;
@@ -45,12 +46,28 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
   const containerRef = useRef<HTMLDivElement>(null);
   const songKeyRef = useRef<string | undefined>(songId);
 
+  // Per-song scroll memory: each song reopens on the section it was left on
+  // (and a song opened for the first time starts at the top).
+  const scrollMemory = useScrollMemory(songId ? `display-scroll:${songId}` : undefined);
+
   // Song changed: restore that song's saved layout, or reset to a single pane.
-  useEffect(() => {
+  // A layout effect so the swap happens in the same pre-paint commit as the new
+  // lyrics — otherwise the incoming song flashes for a frame in the outgoing
+  // song's pane layout.
+  useIsomorphicLayoutEffect(() => {
     if (songKeyRef.current === songId) return;
     songKeyRef.current = songId;
     setPanes(loadLayout(songId));
   }, [songId]);
+
+  // Restoring the layout gives each pane a brand new DOM node (the pane keys are
+  // song-scoped), so the remembered scroll offsets have to be re-applied against
+  // the freshly committed nodes. Keyed on the pane ids rather than the pane
+  // objects so dragging a splitter (heights only) doesn't yank the scroll.
+  const paneIds = panes.map((p) => p.id).join('|');
+  useIsomorphicLayoutEffect(() => {
+    scrollMemory.restore();
+  }, [paneIds, scrollMemory]);
 
   // Persist the current song's layout whenever the panes change.
   useEffect(() => {
@@ -251,6 +268,8 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
         <div key={pane.id} className="contents">
           {/* Pane */}
           <div
+            ref={scrollMemory.paneRef(index)}
+            onScroll={scrollMemory.onPaneScroll(index)}
             className="overflow-y-auto overflow-x-hidden relative group/pane"
             style={{ height: `${pane.heightPercent}%` }}
           >

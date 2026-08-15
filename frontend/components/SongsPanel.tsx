@@ -9,6 +9,7 @@ import SongFullScreen from '@/components/SongFullScreen';
 import QueuePanel from '@/components/QueuePanel';
 import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon } from '@/components/icons';
 import { FormattedLyrics, LyricBlocks, toggleBoldInTextarea, useLyricSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
+import { useScrollMemory } from '@/lib/scrollMemory';
 
 export default function SongsPanel() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -799,6 +800,7 @@ export default function SongsPanel() {
                   emptyText="Nothing live"
                   badge="LIVE"
                   badgeClass="text-live"
+                  scrollScope="live"
                   overlay={
                     <ZoomControls
                       value={zoomLevel}
@@ -887,6 +889,7 @@ export default function SongsPanel() {
                 emptyText="Click a song to preview it"
                 badge="PREVIEW"
                 badgeClass="text-ink-mute"
+                scrollScope="preview"
                 overlay={
                   <>
                     <button
@@ -947,16 +950,20 @@ function ZoomControls({ value, onChange }: { value: number; onChange: (z: number
 }
 
 // Scaled 1920x1080 replica of the display window.
-function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay }: {
+function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay, scrollScope }: {
   song: Song | null;
   zoom: number;
   emptyText: string;
   badge: string;
   badgeClass: string;
   overlay: React.ReactNode;
+  scrollScope: string;
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [w, setW] = useState(0);
+  // Same per-song scroll memory as the display window, so the monitor doesn't
+  // inherit the previous song's offset when the song changes.
+  const scrollMemory = useScrollMemory(song ? `monitor-scroll:${scrollScope}:${song.id}` : undefined);
   useEffect(() => {
     const el = boxRef.current;
     if (!el) return;
@@ -981,7 +988,11 @@ function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay }: {
           className="absolute top-0 left-0 overflow-hidden"
           style={{ width: 1920, height: 1080, transform: `scale(${w / 1920})`, transformOrigin: 'top left' }}
         >
-          <div className="h-full w-full overflow-y-auto p-12">
+          <div
+            ref={scrollMemory.paneRef(0)}
+            onScroll={scrollMemory.onPaneScroll(0)}
+            className="h-full w-full overflow-y-auto p-12"
+          >
             <div className="min-h-full w-full flex items-center justify-center">
               <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }} className="w-full">
                 <pre
