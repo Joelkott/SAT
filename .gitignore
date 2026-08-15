@@ -59,3 +59,6 @@ backend/server
 # Stray Next.js build cache at repo root
 .next/
 frontend/.next/
+
+# GSD planning artifacts — local only (removed from public repo 2026-08-15)
+.planning/
