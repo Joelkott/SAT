@@ -1,6 +1,7 @@
 package bible
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -25,6 +26,36 @@ func TestLocalProviderLoadTime(t *testing.T) {
 	}
 	if len(bookNamesMal) != len(usfmBooks) {
 		t.Errorf("bookNamesMal has %d entries, want %d", len(bookNamesMal), len(usfmBooks))
+	}
+
+	// AMPC: present, English references, cross-refs stripped, amplification kept.
+	av, err := lp.GetVerse("local-ampc", "JHN.3.16")
+	if err != nil || av.Text == "" || av.Reference != "John 3:16" {
+		t.Errorf("AMPC JHN.3.16 = %+v, err %v; want non-empty text and reference %q", av, err, "John 3:16")
+	}
+	gen, err := lp.GetVerse("local-ampc", "GEN.1.1")
+	if err != nil {
+		t.Fatalf("AMPC GEN.1.1 lookup failed: %v", err)
+	}
+	if strings.Contains(gen.Text, "[Heb.") {
+		t.Errorf("AMPC GEN.1.1 still has a cross-reference bracket: %q", gen.Text)
+	}
+	if gen.Text != strings.TrimSpace(gen.Text) {
+		t.Errorf("AMPC GEN.1.1 has surrounding whitespace: %q", gen.Text)
+	}
+	psa, err := lp.GetVerse("local-ampc", "PSA.23.1")
+	if err != nil || !strings.Contains(psa.Text, "[to feed, guide, and shield me]") {
+		t.Errorf("AMPC PSA.23.1 lost its amplification bracket: %q (err %v)", psa.Text, err)
+	}
+
+	// ASV: present with the expected 1901 wording.
+	sv, err := lp.GetVerse("local-asv", "JHN.3.16")
+	if err != nil || !strings.Contains(sv.Text, "whosoever believeth on him") {
+		t.Errorf("ASV JHN.3.16 = %q, err %v; want ASV wording", sv.Text, err)
+	}
+
+	if n := len(lp.Bibles()); n != 4 {
+		t.Errorf("bundled bibles = %d, want 4", n)
 	}
 }
 

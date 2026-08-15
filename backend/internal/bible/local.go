@@ -9,10 +9,12 @@ import (
 	"strings"
 )
 
-// Bundled public-domain Bibles served locally (no api.bible dependency).
-// Data generated from getbible.net full-file exports; see data/generate.py.
+// Bundled Bibles served locally (no api.bible dependency).
+// KJV + Malayalam OV come from getbible.net exports (data/generate.py);
+// AMPC from a Zefania XML (data/convert_zefania.py); ASV from a bibleapi
+// resultset JSON (data/convert_bibleapi.py).
 //
-//go:embed data/kjv.json data/mal_ov_1910.json
+//go:embed data/kjv.json data/mal_ov_1910.json data/ampc.json data/asv.json
 var localData embed.FS
 
 // USFM book IDs in canonical (Protestant) order — matches api.bible book IDs.
@@ -137,6 +139,24 @@ func NewLocalProvider() *LocalProvider {
 		DescriptionLocal:  "പൊതുസഞ്ചയത്തിലുള്ള മലയാളം പഴയ പതിപ്പ്",
 		Language:          Language{ID: "mal", Name: "Malayalam", NameLocal: "മലയാളം", Script: "Malayalam", Direction: "ltr"},
 	}, bookNamesMal)
+	load("local-ampc", "data/ampc.json", Bible{
+		Name:              "Amplified Bible, Classic Edition",
+		NameLocal:         "Amplified Bible, Classic Edition",
+		Abbreviation:      "AMPC",
+		AbbreviationLocal: "AMPC",
+		Description:       "Amplified Bible, Classic Edition, bundled locally",
+		DescriptionLocal:  "Amplified Bible, Classic Edition, bundled locally",
+		Language:          Language{ID: "eng", Name: "English", NameLocal: "English", Script: "Latin", Direction: "ltr"},
+	}, nil)
+	load("local-asv", "data/asv.json", Bible{
+		Name:              "American Standard Version (1901)",
+		NameLocal:         "American Standard Version",
+		Abbreviation:      "ASV",
+		AbbreviationLocal: "ASV",
+		Description:       "Public-domain ASV (1901), bundled locally",
+		DescriptionLocal:  "Public-domain ASV (1901), bundled locally",
+		Language:          Language{ID: "eng", Name: "English", NameLocal: "English", Script: "Latin", Direction: "ltr"},
+	}, nil)
 
 	return lp
 }
