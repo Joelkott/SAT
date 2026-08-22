@@ -129,7 +129,9 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
   const [confirmClear, setConfirmClear] = useState(false);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
