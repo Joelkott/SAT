@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SearchIcon } from '@/components/icons';
 
 interface ReferenceSearchProps {
@@ -8,18 +8,65 @@ interface ReferenceSearchProps {
   isLoading: boolean;
 }
 
+const HISTORY_KEY = 'bible-search-history';
+const HISTORY_MAX = 50;
+
 export default function ReferenceSearch({
   onSearch,
   isLoading,
 }: ReferenceSearchProps) {
   const [value, setValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Shell-style history: ArrowUp recalls older searches, ArrowDown walks back
+  // toward the draft the user was typing. Stored newest-first.
+  const [history, setHistory] = useState<string[]>([]);
+  const [histIdx, setHistIdx] = useState(-1); // -1 = live draft, 0 = newest
+  const draftRef = useRef('');
+
+  useEffect(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+      if (Array.isArray(raw)) setHistory(raw.filter((s) => typeof s === 'string'));
+    } catch {}
+  }, []);
+
+  // Keep the caret at the end after recalling a history entry.
+  useEffect(() => {
+    if (histIdx < 0) return;
+    const el = inputRef.current;
+    if (el) el.setSelectionRange(el.value.length, el.value.length);
+  }, [histIdx, value]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && value.trim()) {
-      onSearch(value.trim());
+      const q = value.trim();
+      onSearch(q);
+      setHistory((prev) => {
+        const next = [q, ...prev.filter((h) => h !== q)].slice(0, HISTORY_MAX);
+        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch {}
+        return next;
+      });
+      setHistIdx(-1);
+      draftRef.current = '';
       setValue('');
     } else if (e.key === 'Escape') {
+      setHistIdx(-1);
+      draftRef.current = '';
       setValue('');
+    } else if (e.key === 'ArrowUp') {
+      if (history.length === 0) return;
+      e.preventDefault();
+      if (histIdx === -1) draftRef.current = value;
+      const next = Math.min(histIdx + 1, history.length - 1);
+      setHistIdx(next);
+      setValue(history[next]);
+    } else if (e.key === 'ArrowDown') {
+      if (histIdx === -1) return;
+      e.preventDefault();
+      const next = histIdx - 1;
+      setHistIdx(next);
+      setValue(next === -1 ? draftRef.current : history[next]);
     }
   };
 
@@ -27,9 +74,14 @@ export default function ReferenceSearch({
     <div className="relative">
       <SearchIcon className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none" />
       <input
+        ref={inputRef}
         type="text"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => {
+          // Editing a recalled entry turns it into the new draft.
+          setValue(e.target.value);
+          setHistIdx(-1);
+        }}
         onKeyDown={handleKeyDown}
         placeholder="Go to reference — John 3:16, Psalm 23, Ps 112:2 NLT"
         disabled={isLoading}
