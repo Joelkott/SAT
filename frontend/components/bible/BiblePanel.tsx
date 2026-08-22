@@ -399,10 +399,22 @@ export default function BiblePanel() {
 
   // Recents & pins ----------------------------------------------------------
   const [recents, setRecents] = useState<string[]>([]);
-  const [pins, setPins] = useState<string[]>([]);
+  // A pin remembers the translation columns it was made with, so opening it
+  // restores the same view. Older pins were plain strings — normalize them.
+  type Pin = { ref: string; bibles?: string[] };
+  const [pins, setPins] = useState<Pin[]>([]);
   useEffect(() => {
     try { setRecents(JSON.parse(localStorage.getItem('bible-recents') || '[]')); } catch {}
-    try { setPins(JSON.parse(localStorage.getItem('bible-pins') || '[]')); } catch {}
+    try {
+      const raw = JSON.parse(localStorage.getItem('bible-pins') || '[]');
+      if (Array.isArray(raw)) {
+        setPins(
+          raw
+            .map((p: unknown) => (typeof p === 'string' ? { ref: p } : (p as Pin)))
+            .filter((p: Pin) => p && typeof p.ref === 'string')
+        );
+      }
+    } catch {}
   }, []);
 
   // Wall-output layout (blur + box size) — media/admin adjustable, persisted
@@ -448,11 +460,24 @@ export default function BiblePanel() {
 
   const togglePin = useCallback((ref: string) => {
     setPins((prev) => {
-      const next = prev.includes(ref) ? prev.filter((r) => r !== ref) : [ref, ...prev].slice(0, 12);
+      const exists = prev.some((p) => p.ref === ref);
+      const next = exists
+        ? prev.filter((p) => p.ref !== ref)
+        : [{ ref, bibles: selectedBibleIds }, ...prev].slice(0, 12);
       try { localStorage.setItem('bible-pins', JSON.stringify(next)); } catch {}
       return next;
     });
-  }, []);
+  }, [selectedBibleIds]);
+
+  // Opening a pin restores the translation columns it was pinned with
+  // (ignoring any that no longer exist), then loads the reference.
+  const openPin = useCallback((pin: Pin) => {
+    if (pin.bibles && pin.bibles.length > 0) {
+      const valid = pin.bibles.filter((id) => translations.some((t) => t.id === id));
+      if (valid.length > 0) setSelectedBibleIds(valid);
+    }
+    handleReferenceSearch(pin.ref);
+  }, [translations, handleReferenceSearch]);
 
   // Team role: media proposes verses, worship gets an accept prompt.
   // guest is deliberately not in the union — it falls through to the default
@@ -816,34 +841,34 @@ export default function BiblePanel() {
       {/* Pinned + recent passages */}
       {(pins.length > 0 || recents.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {pins.map((ref) => (
+          {pins.map((pin) => (
             <span
-              key={`pin-${ref}`}
+              key={`pin-${pin.ref}`}
               className="group flex items-center rounded-full bg-accent/10 border border-accent/40 overflow-hidden"
             >
               <button
-                onClick={() => handleReferenceSearch(ref)}
-                title={`Open ${ref}`}
+                onClick={() => openPin(pin)}
+                title={`Open ${pin.ref}`}
                 className="h-7 pl-2.5 pr-1.5 flex items-center gap-1.5 text-accent-hover hover:text-ink cursor-pointer transition-colors duration-150 text-xs font-medium"
               >
                 <PinIcon className="w-3 h-3" />
-                {ref}
+                {pin.ref}
               </button>
               <button
-                onClick={() => togglePin(ref)}
+                onClick={() => togglePin(pin.ref)}
                 title="Unpin"
-                aria-label={`Unpin ${ref}`}
+                aria-label={`Unpin ${pin.ref}`}
                 className="h-7 pr-2 pl-0.5 flex items-center text-accent-hover/50 hover:text-danger cursor-pointer transition-colors duration-150"
               >
                 <XIcon className="w-3 h-3" />
               </button>
             </span>
           ))}
-          {pins.length > 0 && recents.filter((r) => !pins.includes(r)).length > 0 && (
+          {pins.length > 0 && recents.filter((r) => !pins.some((p) => p.ref === r)).length > 0 && (
             <span className="w-px h-4 bg-edge mx-0.5" aria-hidden />
           )}
           {recents
-            .filter((r) => !pins.includes(r))
+            .filter((r) => !pins.some((p) => p.ref === r))
             .map((ref) => (
               <button
                 key={`recent-${ref}`}
@@ -883,15 +908,15 @@ export default function BiblePanel() {
           {currentReference && (
             <button
               onClick={() => togglePin(currentReference)}
-              title={pins.includes(currentReference) ? `Unpin ${currentReference}` : `Pin ${currentReference} for quick access`}
+              title={pins.some((p) => p.ref === currentReference) ? `Unpin ${currentReference}` : `Pin ${currentReference} for quick access`}
               className={`h-9 px-3 flex items-center gap-1.5 rounded-lg border cursor-pointer text-sm transition-colors duration-150 ${
-                pins.includes(currentReference)
+                pins.some((p) => p.ref === currentReference)
                   ? 'bg-accent/10 border-accent/40 text-accent-hover'
                   : 'border-edge text-ink-mute hover:text-ink hover:border-accent/50'
               }`}
             >
               <PinIcon className="w-3.5 h-3.5" />
-              {pins.includes(currentReference) ? 'Pinned' : 'Pin'}
+              {pins.some((p) => p.ref === currentReference) ? 'Pinned' : 'Pin'}
             </button>
           )}
           {(role === 'media' || role === 'admin') && (
