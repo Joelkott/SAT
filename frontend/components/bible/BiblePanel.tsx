@@ -71,17 +71,28 @@ export default function BiblePanel() {
         if (cancelled) return;
         setTranslations(data);
 
-        const kjv =
-          data.find((t) => t.id === 'local-kjv') ||
-          data.find((t) => t.id === 'de4e12af7f28f599-02') ||
-          data.find((t) => t.abbreviation === 'engKJV');
-        const mov =
-          data.find((t) => t.id === 'local-mal-ov') ||
-          data.find((t) => t.language?.id === 'mal');
+        // Restore persisted columns if they still exist in the catalog.
+        let initial: string[] = [];
+        try {
+          const saved = JSON.parse(localStorage.getItem('bible-columns') || '[]');
+          if (Array.isArray(saved) && saved.length > 0) {
+            initial = saved.filter((id: string) => data.some((t) => t.id === id));
+          }
+        } catch {}
 
-        const defaults = [kjv?.id, mov?.id].filter(Boolean) as string[];
-        if (defaults.length === 0 && data.length > 0) defaults.push(data[0].id);
-        setSelectedBibleIds(defaults);
+        if (initial.length === 0) {
+          // Fall back to KJV + Malayalam OV defaults.
+          const kjv =
+            data.find((t) => t.id === 'local-kjv') ||
+            data.find((t) => t.id === 'de4e12af7f28f599-02') ||
+            data.find((t) => t.abbreviation === 'engKJV');
+          const mov =
+            data.find((t) => t.id === 'local-mal-ov') ||
+            data.find((t) => t.language?.id === 'mal');
+          initial = [kjv?.id, mov?.id].filter(Boolean) as string[];
+          if (initial.length === 0 && data.length > 0) initial.push(data[0].id);
+        }
+        setSelectedBibleIds(initial);
       } catch (err) {
         if (cancelled) return;
         console.error('Error loading translations:', err);
@@ -92,6 +103,13 @@ export default function BiblePanel() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Persist the active translation columns so they survive page reload.
+  useEffect(() => {
+    if (selectedBibleIds.length > 0) {
+      try { localStorage.setItem('bible-columns', JSON.stringify(selectedBibleIds)); } catch {}
+    }
+  }, [selectedBibleIds]);
 
   // 2. When the primary translation changes: fetch its books (drives nav labels).
   useEffect(() => {
@@ -603,6 +621,27 @@ export default function BiblePanel() {
       liveApi.setSuggestion(columns[0].reference, 'worship', selectedBibleIds).catch(() => {});
     }
   }, [buildScriptureColumns, role, selectedBibleIds]);
+
+  // Enter sends the current selection to the wall/display (role-appropriate).
+  // Skipped when a suggestion banner is visible (that handler takes priority)
+  // or when no chapter is loaded.
+  useEffect(() => {
+    if (suggestion || !selectedChapter) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+      e.preventDefault();
+      if (role === 'media' || role === 'admin') {
+        handleSendToWall();
+      } else {
+        handleSendToDisplay();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [suggestion, selectedChapter, role, handleSendToWall, handleSendToDisplay]);
 
   // Complete a pending mirror: once the navigated chapter's content arrives,
   // push it to the wall automatically.
