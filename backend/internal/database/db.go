@@ -657,6 +657,16 @@ func (db *DB) ReorderQueue(items []models.QueueItemPosition) error {
 	}
 	defer tx.Rollback()
 
+	// position has a UNIQUE constraint that Postgres checks per-row (not
+	// deferred), so writing the new order directly collides whenever items
+	// swap places. Shift everything above the current range first, then
+	// apply the final positions.
+	if _, err := tx.Exec(
+		"UPDATE queue_items SET position = position + (SELECT COALESCE(MAX(position), 0) + 1 FROM queue_items)",
+	); err != nil {
+		return fmt.Errorf("error shifting queue positions: %w", err)
+	}
+
 	// Update each item's position
 	for _, item := range items {
 		_, err := tx.Exec(
