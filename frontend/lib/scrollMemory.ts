@@ -50,6 +50,10 @@ export interface ScrollMemory {
   onPaneScroll: (index: number) => (e: { currentTarget: HTMLElement }) => void;
   /** re-apply the remembered offsets (e.g. after the layout changes) */
   restore: () => void;
+  /** scroll box `index` by `px` (smooth). Returns false when that box isn't mounted
+   *  or there is nothing to scroll. The resulting scroll events save the new
+   *  position through onPaneScroll as usual. */
+  scrollPane: (index: number, px: number) => boolean;
 }
 
 /**
@@ -150,6 +154,16 @@ export function useScrollMemory(storageKey: string | undefined): ScrollMemory {
     return cb;
   }, []);
 
+  const scrollPane = useCallback((index: number, px: number) => {
+    const el = elements.current[index];
+    if (!el || el.scrollHeight <= el.clientHeight) return false;
+    el.scrollBy({ top: px, behavior: 'smooth' });
+    return true;
+  }, []);
+
   // Stable identity so callers can list it as an effect dependency.
-  return useMemo(() => ({ paneRef, onPaneScroll, restore }), [paneRef, onPaneScroll, restore]);
+  return useMemo(
+    () => ({ paneRef, onPaneScroll, restore, scrollPane }),
+    [paneRef, onPaneScroll, restore, scrollPane]
+  );
 }

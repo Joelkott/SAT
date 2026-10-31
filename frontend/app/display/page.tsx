@@ -99,6 +99,8 @@ export default function Display() {
   const applyAlignRef = useRef(applyAlign);
   applyAlignRef.current = applyAlign;
   const [zoomLevel, setZoomLevel] = useState(1.0);
+  // Latest remote scroll request; seq bumps so repeats still trigger.
+  const [scrollCmd, setScrollCmd] = useState<{ seq: number; dir: 1 | -1; amount: 'step' | 'page' }>({ seq: 0, dir: 1, amount: 'step' });
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -219,6 +221,13 @@ export default function Display() {
         // the delete-path clear omits it and falls back to the idle screen.
         if (data.blank === true) setBlanked(true);
       }
+      // Remote scroll from a paired phone (via the control window). Only lyrics
+      // scroll; while scripture or black is up SplitLyricsView isn't mounted, so it's ignored.
+      if (data?.type === 'scroll' && (data.dir === 1 || data.dir === -1)) {
+        const amount: 'step' | 'page' = data.amount === 'page' ? 'page' : 'step';
+        const dir: 1 | -1 = data.dir;
+        setScrollCmd((s) => ({ seq: s.seq + 1, dir, amount }));
+      }
       if (data?.type === 'zoom' && typeof data.zoomLevel === 'number') {
         setZoomLevel(data.zoomLevel);
       }
@@ -302,7 +311,7 @@ export default function Display() {
       ) : blanked ? (
         <div className="h-full w-full bg-black" />
       ) : song ? (
-        <SplitLyricsView lyrics={song.music_ministry_lyrics || song.display_lyrics || ''} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} songId={song.id} />
+        <SplitLyricsView lyrics={song.music_ministry_lyrics || song.display_lyrics || ''} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} songId={song.id} scrollCommand={scrollCmd} />
       ) : (
         <div className="h-full w-full flex items-center justify-center">
           <div className="text-center">

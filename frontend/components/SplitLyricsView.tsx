@@ -10,6 +10,8 @@ interface SplitLyricsViewProps {
   language?: string;
   textAlign?: 'left' | 'center' | 'right';
   songId?: string;
+  /** Remote scroll (phone controller); a new `seq` triggers one scroll. */
+  scrollCommand?: { seq: number; dir: 1 | -1; amount: 'step' | 'page' };
 }
 
 interface Pane {
@@ -40,7 +42,7 @@ function loadLayout(songId?: string): Pane[] {
   }
 }
 
-export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign = 'center', songId }: SplitLyricsViewProps) {
+export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign = 'center', songId, scrollCommand }: SplitLyricsViewProps) {
   const [panes, setPanes] = useState<Pane[]>(() => loadLayout(songId));
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -49,6 +51,18 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
   // Per-song scroll memory: each song reopens on the section it was left on
   // (and a song opened for the first time starts at the top).
   const scrollMemory = useScrollMemory(songId ? `display-scroll:${songId}` : undefined);
+
+  // Remote scroll (phone controller): moves the TOP pane only (decision: pane 0).
+  // Seeded with the current seq so a remount never replays an old command.
+  const lastScrollSeq = useRef(scrollCommand?.seq ?? 0);
+  useEffect(() => {
+    if (!scrollCommand || scrollCommand.seq === lastScrollSeq.current) return;
+    lastScrollSeq.current = scrollCommand.seq;
+    const el = containerRef.current?.querySelector<HTMLElement>('[data-pane-index="0"]');
+    const h = el?.clientHeight ?? 0;
+    const frac = scrollCommand.amount === 'page' ? 0.8 : 0.25;
+    scrollMemory.scrollPane(0, scrollCommand.dir * frac * h);
+  }, [scrollCommand, scrollMemory]);
 
   // Song changed: restore that song's saved layout, or reset to a single pane.
   // A layout effect so the swap happens in the same pre-paint commit as the new
@@ -269,6 +283,7 @@ export default function SplitLyricsView({ lyrics, zoomLevel, language, textAlign
           {/* Pane */}
           <div
             ref={scrollMemory.paneRef(index)}
+            data-pane-index={index}
             onScroll={scrollMemory.onPaneScroll(index)}
             className="overflow-y-auto overflow-x-hidden relative group/pane"
             style={{ height: `${pane.heightPercent}%` }}
