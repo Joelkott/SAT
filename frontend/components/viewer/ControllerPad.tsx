@@ -36,10 +36,12 @@ const STEP_SEND_KEY = 'sat-remote-step-send';
 const TAB_KEY = 'sat-remote-tab';
 const SCROLL_MAX_IN_FLIGHT = 3;
 
-const btn =
-  'min-h-14 rounded-xl border border-edge bg-surface-raised text-ink font-semibold cursor-pointer active:bg-surface-hover disabled:opacity-40 disabled:cursor-default';
+const btnScroll =
+  'w-full min-h-24 rounded-2xl bg-accent-deep text-on-accent text-2xl font-bold cursor-pointer active:bg-accent disabled:opacity-40 disabled:cursor-default';
+const btnSmallGrid =
+  'min-h-12 rounded-xl border border-edge bg-surface-raised text-ink text-sm font-semibold cursor-pointer active:bg-surface-hover disabled:opacity-40 disabled:cursor-default';
 const btnPrimary =
-  'flex-1 min-h-20 rounded-2xl bg-accent-deep text-on-accent text-xl font-bold cursor-pointer active:bg-accent disabled:opacity-40 disabled:cursor-default';
+  'flex-1 min-h-16 rounded-2xl border border-edge-strong bg-surface-raised text-ink text-xl font-bold cursor-pointer active:bg-surface-hover disabled:opacity-40 disabled:cursor-default';
 const btnDanger =
   'min-h-12 px-4 rounded-xl border border-danger/60 bg-danger/15 text-danger font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-default';
 const rowBtn =
@@ -257,33 +259,42 @@ export default function ControllerPad({
             </div>
           )}
 
-          {/* Display controls — primary */}
+          {/* Display controls: Scroll up/down are the primary, biggest
+              buttons; page and zoom sit in a compact row below. */}
           {capabilities.display && (
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" className={btn} disabled={isBusy('scroll', SCROLL_MAX_IN_FLIGHT)}
-                onClick={() => send('display.scroll', { dir: -1, amount: 'step' }, 'scroll')}>
-                Scroll ▲
+            <div className="space-y-2">
+              <button type="button" className={btnScroll} disabled={isBusy('scroll', SCROLL_MAX_IN_FLIGHT)}
+                onClick={() => send('display.scroll', { dir: -1, amount: 'step' }, 'scroll')}
+                aria-label="Scroll the display up">
+                ▲ Scroll up
               </button>
-              <button type="button" className={btn} disabled={isBusy('scroll', SCROLL_MAX_IN_FLIGHT)}
-                onClick={() => send('display.scroll', { dir: 1, amount: 'step' }, 'scroll')}>
-                Scroll ▼
+              <button type="button" className={btnScroll} disabled={isBusy('scroll', SCROLL_MAX_IN_FLIGHT)}
+                onClick={() => send('display.scroll', { dir: 1, amount: 'step' }, 'scroll')}
+                aria-label="Scroll the display down">
+                ▼ Scroll down
               </button>
-              <button type="button" className={btn} disabled={isBusy('scroll', SCROLL_MAX_IN_FLIGHT)}
-                onClick={() => send('display.scroll', { dir: -1, amount: 'page' }, 'scroll')}>
-                Page ▲
-              </button>
-              <button type="button" className={btn} disabled={isBusy('scroll', SCROLL_MAX_IN_FLIGHT)}
-                onClick={() => send('display.scroll', { dir: 1, amount: 'page' }, 'scroll')}>
-                Page ▼
-              </button>
-              <button type="button" className={btn} disabled={isBusy('zoom', SCROLL_MAX_IN_FLIGHT)}
-                onClick={() => send('display.zoom', { delta: -0.1 }, 'zoom')}>
-                Zoom −
-              </button>
-              <button type="button" className={btn} disabled={isBusy('zoom', SCROLL_MAX_IN_FLIGHT)}
-                onClick={() => send('display.zoom', { delta: 0.1 }, 'zoom')}>
-                Zoom +
-              </button>
+              <div className="grid grid-cols-4 gap-2">
+                <button type="button" className={btnSmallGrid} disabled={isBusy('scroll', SCROLL_MAX_IN_FLIGHT)}
+                  onClick={() => send('display.scroll', { dir: -1, amount: 'page' }, 'scroll')}
+                  aria-label="Page up">
+                  Page ▲
+                </button>
+                <button type="button" className={btnSmallGrid} disabled={isBusy('scroll', SCROLL_MAX_IN_FLIGHT)}
+                  onClick={() => send('display.scroll', { dir: 1, amount: 'page' }, 'scroll')}
+                  aria-label="Page down">
+                  Page ▼
+                </button>
+                <button type="button" className={btnSmallGrid} disabled={isBusy('zoom', SCROLL_MAX_IN_FLIGHT)}
+                  onClick={() => send('display.zoom', { delta: -0.1 }, 'zoom')}
+                  aria-label="Zoom out">
+                  Zoom −
+                </button>
+                <button type="button" className={btnSmallGrid} disabled={isBusy('zoom', SCROLL_MAX_IN_FLIGHT)}
+                  onClick={() => send('display.zoom', { delta: 0.1 }, 'zoom')}
+                  aria-label="Zoom in">
+                  Zoom +
+                </button>
+              </div>
             </div>
           )}
 
