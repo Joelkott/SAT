@@ -511,6 +511,7 @@ export interface LiveSuggestion {
   reference: string;
   from: string;
   bibles?: string[];
+  passage?: string;  // language-neutral "JHN 3:16-18" (USFM book id) to navigate by
   updated_at: number;
 }
 
@@ -520,8 +521,8 @@ export const liveApi = {
     return response.data;
   },
 
-  setSuggestion: async (reference: string, from: string, bibles?: string[]): Promise<LiveSuggestion> => {
-    const response = await api.post<LiveSuggestion>('/live/suggestion', { reference, from, bibles });
+  setSuggestion: async (reference: string, from: string, bibles?: string[], passage?: string): Promise<LiveSuggestion> => {
+    const response = await api.post<LiveSuggestion>('/live/suggestion', { reference, from, bibles, passage });
     return response.data;
   },
 

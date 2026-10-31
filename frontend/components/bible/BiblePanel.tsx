@@ -56,6 +56,11 @@ type PendingSend = {
 
 const selKey = (s: VerseSelection | null) => (s ? `${s.start}-${s.end}` : 'all');
 
+// Identity of what is on the wall: passage + columns, so re-sending the same
+// verse in different translations still counts as a change.
+const wallKey = (passage: string, bibles?: string[]) =>
+  `${passage}|${normalizeBibleIds(bibles || []).join(',')}`;
+
 type WallCfg = { blur: number; box_w_px: number; box_h_px: number; text_scale: number; layout: WallLayout };
 
 const toWallCfg = (c: OutputConfig): WallCfg => ({
@@ -415,6 +420,8 @@ export default function BiblePanel() {
       const abbr = b.abbreviation.toLowerCase();
       return (
         b.id === aliasId ||
+        // USFM id, e.g. a mirrored "JHN 3:16" passage.
+        b.id.toLowerCase() === bookQuery ||
         name === bookQuery || name.startsWith(bookQuery) ||
         nameLong === bookQuery || nameLong.startsWith(bookQuery) ||
         abbr === bookQuery
@@ -744,6 +751,18 @@ export default function BiblePanel() {
     return ref;
   }, [selectedBook, selectedChapter, selection]);
 
+  // Language-neutral form of currentReference ("JHN 3:16-18", USFM book id).
+  // Suggestions carry this so the other team can navigate to it whatever
+  // their translations call the book.
+  const currentPassage = useMemo(() => {
+    if (!selectedBook || !selectedChapter) return null;
+    let p = `${selectedBook.id} ${selectedChapter.number}`;
+    if (selection) {
+      p += `:${selection.start}${selection.end !== selection.start ? `-${selection.end}` : ''}`;
+    }
+    return p;
+  }, [selectedBook, selectedChapter, selection]);
+
   // Record a verse-level view in recents after a 2s dwell, so stepping
   // through verses with the arrow keys doesn't flood the history.
   useEffect(() => {
@@ -781,7 +800,7 @@ export default function BiblePanel() {
     handleReferenceSearch(pin.ref);
   }, [translations, handleReferenceSearch]);
 
-  const [suggestion, setSuggestion] = useState<{ reference: string; updated_at: number; bibles?: string[] } | null>(null);
+  const [suggestion, setSuggestion] = useState<{ reference: string; passage?: string; updated_at: number; bibles?: string[] } | null>(null);
   const seenSuggestionRef = useRef<number>(0);
 
   // Media: mirror what worship sends to live. Auto = follow and send to the
@@ -792,10 +811,17 @@ export default function BiblePanel() {
     if (v !== null) setAutoMirror(v === '1');
   }, []);
   const toggleAutoMirror = () => {
-    setAutoMirror((v) => {
-      localStorage.setItem('bible-auto-mirror', v ? '0' : '1');
-      return !v;
-    });
+    const next = !autoMirror;
+    try { localStorage.setItem('bible-auto-mirror', next ? '1' : '0'); } catch {}
+    setAutoMirror(next);
+    // Turning auto-mirror on while a "Worship is live with…" banner waits:
+    // follow it now, as auto-mirror would have, instead of leaving a stale
+    // banner that could later re-send an old verse.
+    if (next && role === 'media' && suggestion) {
+      seenSuggestionRef.current = suggestion.updated_at;
+      applyMirror(suggestion.passage || suggestion.reference, suggestion.bibles);
+      setSuggestion(null);
+    }
   };
 
   // When set, send as soon as the navigated chapter's content is loaded
@@ -810,6 +836,12 @@ export default function BiblePanel() {
   // What this screen is currently showing, for the same-verse guard below.
   const currentReferenceRef = useRef<string | null>(null);
   currentReferenceRef.current = currentReference;
+  const currentPassageRef = useRef<string | null>(null);
+  currentPassageRef.current = currentPassage;
+  // What this machine last put on the wall (passage + columns); null after
+  // a Clear. Media's "already live" guard compares against this — not
+  // against what happens to be on screen, which may only be a preview.
+  const lastWallKeyRef = useRef<string | null>(null);
 
   // Mirror worship's passage AND translation columns, then queue the wall
   // send bound to the mirrored chapter + selection + columns, so the old
@@ -844,31 +876,67 @@ export default function BiblePanel() {
   // Both teams poll the shared suggestion channel, each listening only for
   // the other side: worship hears media's proposals, media hears what
   // worship took live.
+  // Latest values for the poller, so the interval isn't torn down (and its
+  // timing reset) every time one of them changes.
+  const autoMirrorRef = useRef(autoMirror);
+  autoMirrorRef.current = autoMirror;
+  const applyMirrorRef = useRef(applyMirror);
+  applyMirrorRef.current = applyMirror;
   useEffect(() => {
     const listenFor = role === 'worship' ? 'media' : role === 'media' ? 'worship' : null;
     if (!listenFor) return;
-    if (seenSuggestionRef.current === 0) seenSuggestionRef.current = Date.now();
-    const id = setInterval(async () => {
+    // Baseline against the SERVER's latest suggestion rather than this
+    // machine's clock: a clock behind the server would otherwise replay an
+    // old suggestion on load (and auto-mirror it to the wall); one ahead
+    // would ignore new ones until it caught up.
+    let baselined = false;
+    let inFlight = false;
+    const tick = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const sug = await liveApi.getSuggestion();
+        if (!baselined) {
+          baselined = true;
+          seenSuggestionRef.current = Math.max(seenSuggestionRef.current, sug.updated_at || 0);
+          return;
+        }
         if (!sug.reference || sug.updated_at <= seenSuggestionRef.current) return;
         if ((sug.from || 'media') !== listenFor) return;
-        // Same verse we're already showing (e.g. our own live verse echoed
-        // back through the other side): acknowledge silently.
-        if (sug.reference === currentReferenceRef.current) {
+        const target = sug.passage || sug.reference;
+        if (role === 'media') {
+          // Worship re-sent what this machine already has on the wall
+          // (same passage AND columns): nothing to do.
+          const key = sug.passage ? wallKey(sug.passage, sug.bibles) : null;
+          if (key && key === lastWallKeyRef.current) {
+            seenSuggestionRef.current = sug.updated_at;
+            return;
+          }
+          if (autoMirrorRef.current) {
+            seenSuggestionRef.current = sug.updated_at;
+            setSuggestion(null);
+            applyMirrorRef.current(target, sug.bibles);
+            return;
+          }
+        } else if (
+          (sug.passage && sug.passage === currentPassageRef.current) ||
+          sug.reference === currentReferenceRef.current
+        ) {
+          // Worship is already looking at the suggested verse.
           seenSuggestionRef.current = sug.updated_at;
           return;
         }
-        if (role === 'media' && autoMirror) {
-          seenSuggestionRef.current = sug.updated_at;
-          applyMirror(sug.reference, sug.bibles);
-        } else {
-          setSuggestion({ reference: sug.reference, updated_at: sug.updated_at, bibles: sug.bibles });
-        }
-      } catch {}
-    }, 3000);
+        setSuggestion({ reference: sug.reference, passage: sug.passage, updated_at: sug.updated_at, bibles: sug.bibles });
+      } catch {
+        // Transient poll failure — try again next tick.
+      } finally {
+        inFlight = false;
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [role, autoMirror, applyMirror]);
+  }, [role]);
 
   // Enter accepts a pending suggestion banner (worship: open it; media:
   // mirror it to the wall), skipped while typing in a field.
@@ -881,8 +949,8 @@ export default function BiblePanel() {
       if (isActivatableControl(e.target)) return;
       e.preventDefault();
       seenSuggestionRef.current = suggestion.updated_at;
-      if (role === 'media') applyMirror(suggestion.reference, suggestion.bibles);
-      else handleReferenceSearch(suggestion.reference);
+      if (role === 'media') applyMirror(suggestion.passage || suggestion.reference, suggestion.bibles);
+      else handleReferenceSearch(suggestion.passage || suggestion.reference);
       setSuggestion(null);
     };
     window.addEventListener('keydown', onKey);
@@ -975,9 +1043,10 @@ export default function BiblePanel() {
     try {
       setWallState('sending');
       await liveApi.setScripture(columns);
+      lastWallKeyRef.current = currentPassage ? wallKey(currentPassage, selectedBibleIds) : null;
       displayChannelRef.current?.postMessage({ type: 'scripture', columns });
       if (role === 'media' && columns[0] && !isMirrorSend) {
-        liveApi.setSuggestion(columns[0].reference, 'media').catch(() => {});
+        liveApi.setSuggestion(columns[0].reference, 'media', undefined, currentPassage ?? undefined).catch(() => {});
       }
       setWallState('live');
     } catch (err) {
@@ -985,7 +1054,7 @@ export default function BiblePanel() {
       setWallState('idle');
       setError('Could not send to the wall output. Check the backend connection.');
     }
-  }, [selectedChapter, chapterReady, buildScriptureColumns, role, queuePendingSend]);
+  }, [selectedChapter, chapterReady, buildScriptureColumns, role, queuePendingSend, currentPassage, selectedBibleIds]);
 
   // Send the current selection to the same-machine /display window. When
   // worship takes a verse live, publish it so the media machine can mirror.
@@ -1002,9 +1071,9 @@ export default function BiblePanel() {
     }
     displayChannelRef.current?.postMessage({ type: 'scripture', columns });
     if (role === 'worship' && columns[0]) {
-      liveApi.setSuggestion(columns[0].reference, 'worship', selectedBibleIds).catch(() => {});
+      liveApi.setSuggestion(columns[0].reference, 'worship', selectedBibleIds, currentPassage ?? undefined).catch(() => {});
     }
-  }, [selectedChapter, chapterReady, buildScriptureColumns, role, selectedBibleIds, queuePendingSend]);
+  }, [selectedChapter, chapterReady, buildScriptureColumns, role, selectedBibleIds, queuePendingSend, currentPassage]);
 
   // Enter sends the current selection to the wall/display (role-appropriate).
   // Skipped when a suggestion banner is visible (that handler takes priority)
@@ -1074,6 +1143,7 @@ export default function BiblePanel() {
   const handleClearWall = useCallback(async () => {
     // A queued send must not put text back up after the operator cleared.
     pendingSendRef.current = null;
+    lastWallKeyRef.current = null;
     displayChannelRef.current?.postMessage({ type: 'scripture-clear' });
     try {
       await liveApi.clearScripture();
@@ -1558,7 +1628,7 @@ export default function BiblePanel() {
           <button
             onClick={() => {
               seenSuggestionRef.current = suggestion.updated_at;
-              applyMirror(suggestion.reference, suggestion.bibles);
+              applyMirror(suggestion.passage || suggestion.reference, suggestion.bibles);
               setSuggestion(null);
             }}
             title="Mirror to wall (Enter)"
@@ -1586,7 +1656,7 @@ export default function BiblePanel() {
           <button
             onClick={() => {
               seenSuggestionRef.current = suggestion.updated_at;
-              handleReferenceSearch(suggestion.reference);
+              handleReferenceSearch(suggestion.passage || suggestion.reference);
               setSuggestion(null);
             }}
             title="Accept suggestion (Enter)"

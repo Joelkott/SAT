@@ -290,7 +290,10 @@ type liveSuggestion struct {
 	Reference string   `json:"reference"`
 	From      string   `json:"from"`
 	Bibles    []string `json:"bibles,omitempty"`
-	UpdatedAt int64    `json:"updated_at"`
+	// Passage is the language-neutral reference ("JHN 3:16-18", USFM book
+	// id) the other side navigates by; Reference is only for display.
+	Passage   string `json:"passage,omitempty"`
+	UpdatedAt int64  `json:"updated_at"`
 }
 
 var suggestionState struct {
@@ -311,12 +314,13 @@ func (h *Handler) SetLiveSuggestion(c *fiber.Ctx) error {
 		Reference string   `json:"reference"`
 		From      string   `json:"from"`
 		Bibles    []string `json:"bibles"`
+		Passage   string   `json:"passage"`
 	}
 	if err := c.BodyParser(&req); err != nil || req.Reference == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "reference is required"})
 	}
 	suggestionState.mu.Lock()
-	suggestionState.s = liveSuggestion{Reference: req.Reference, From: req.From, Bibles: req.Bibles, UpdatedAt: time.Now().UnixMilli()}
+	suggestionState.s = liveSuggestion{Reference: req.Reference, From: req.From, Bibles: req.Bibles, Passage: req.Passage, UpdatedAt: time.Now().UnixMilli()}
 	out := suggestionState.s
 	suggestionState.mu.Unlock()
 	return c.JSON(out)
