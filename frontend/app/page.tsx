@@ -30,6 +30,7 @@ export default function Home() {
   const [showEditLog, setShowEditLog] = useState(false);
   const [showDisplaySettings, setShowDisplaySettings] = useState(false);
   const [showPair, setShowPair] = useState(false);
+  const [songPingActive, setSongPingActive] = useState(false);
   const songsRef = useRef<SongsPanelHandle>(null);
   const bibleRef = useRef<BiblePanelHandle>(null);
   useEffect(() => {
@@ -88,6 +89,9 @@ export default function Home() {
                 >
                   <Icon className={`w-4 h-4 ${active ? 'text-accent-hover' : ''}`} />
                   {label}
+                  {id === 'songs' && songPingActive && !active && (
+                    <span className="w-2 h-2 rounded-full bg-accent animate-pulse" aria-label="New song notification" />
+                  )}
                 </button>
               );
             })}
@@ -229,7 +233,7 @@ export default function Home() {
       )}
 
       <div className={activeTab === 'songs' ? '' : 'hidden'}>
-        <SongsPanel ref={songsRef} />
+        <SongsPanel ref={songsRef} onSongPingChange={setSongPingActive} />
       </div>
       <div className={activeTab === 'bible' ? '' : 'hidden'}>
         <BiblePanel ref={bibleRef} />

@@ -8,12 +8,12 @@ import SongList from '@/components/SongList';
 import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
 import QueuePanel from '@/components/QueuePanel';
-import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon, ClipboardIcon, CheckIcon } from '@/components/icons';
+import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon, ClipboardIcon, CheckIcon, BellIcon } from '@/components/icons';
 import { FormattedLyrics, LyricBlocks, toggleBoldInTextarea, useLyricSpacing, INDIC_EXTRA, stripBold } from '@/components/lyricsFormat';
 import { useScrollMemory } from '@/lib/scrollMemory';
 import { copyText } from '@/lib/clipboard';
 import { useRole, isGuest } from '@/lib/role';
-import { liveSongApi, PanelResult } from '@/lib/remote';
+import { liveSongApi, PanelResult, songPingApi, SongPing } from '@/lib/remote';
 import {
   DEFAULT_ALIGN,
   DEFAULT_FONT,
@@ -40,7 +40,12 @@ export interface SongsPanelHandle {
   republishLive(): void;
 }
 
-function SongsPanel(_props: {}, ref: ForwardedRef<SongsPanelHandle>) {
+export interface SongsPanelProps {
+  // Fires when a song-ping banner appears/disappears (page dots the Songs tab).
+  onSongPingChange?: (active: boolean) => void;
+}
+
+function SongsPanel({ onSongPingChange }: SongsPanelProps, ref: ForwardedRef<SongsPanelHandle>) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [liveSong, setLiveSong] = useState<Song | null>(null);
@@ -482,6 +487,76 @@ function SongsPanel(_props: {}, ref: ForwardedRef<SongsPanelHandle>) {
     }
   }, []);
 
+  // ===== Song pings: another account's phone points this window at a song =====
+  // The server hides stale pings and this account's own pings, so no client
+  // username is needed. The first poll only baselines (no replay on load).
+  const [songPing, setSongPing] = useState<SongPing | null>(null);
+  const seenPingIdRef = useRef<string | null>(null);
+  const pingBaselinedRef = useRef(false);
+  const pingInFlightRef = useRef(false);
+  useEffect(() => {
+    if (role === '' || role === 'guest') return;
+    let alive = true;
+    const tick = async () => {
+      if (pingInFlightRef.current) return;
+      pingInFlightRef.current = true;
+      try {
+        const p = await songPingApi.latest();
+        if (!alive) return;
+        if (!pingBaselinedRef.current) {
+          seenPingIdRef.current = p.id || '';
+          pingBaselinedRef.current = true;
+          return;
+        }
+        if (p.id && p.id !== seenPingIdRef.current) {
+          seenPingIdRef.current = p.id;
+          setSongPing(p);
+        }
+      } catch (err: any) {
+        // Older backend (404) or a network blip: stay quiet.
+        console.warn('Song ping poll failed:', err?.response?.status || err?.message);
+      } finally {
+        pingInFlightRef.current = false;
+      }
+    };
+    tick();
+    const id = setInterval(tick, 2000);
+    return () => { alive = false; clearInterval(id); };
+  }, [role]);
+
+  useEffect(() => {
+    if (!songPing) return;
+    const t = setTimeout(() => setSongPing(null), 120000);
+    return () => clearTimeout(t);
+  }, [songPing]);
+
+  const onSongPingChangeRef = useRef(onSongPingChange);
+  onSongPingChangeRef.current = onSongPingChange;
+  useEffect(() => {
+    onSongPingChangeRef.current?.(!!songPing);
+  }, [songPing]);
+
+  const handlePingPreview = async () => {
+    if (!songPing?.song_id) return;
+    try {
+      handleSelectSong(await songsApi.getById(songPing.song_id));
+    } catch (error) {
+      console.error('Error loading pinged song:', error);
+      setActionError("Couldn't load that song.");
+    }
+  };
+
+  const handlePingAddToQueue = async () => {
+    if (!songPing?.song_id) return;
+    try {
+      await handleAddToQueue(await songsApi.getById(songPing.song_id));
+      setSongPing(null);
+    } catch (error) {
+      console.error('Error loading pinged song:', error);
+      setActionError("Couldn't load that song.");
+    }
+  };
+
   const handleCreateNew = () => {
     if (isGuest()) return;
     setEditingSong(null);
@@ -823,6 +898,37 @@ function SongsPanel(_props: {}, ref: ForwardedRef<SongsPanelHandle>) {
         )}
 
         <div className="flex-1 min-w-0 space-y-5">
+        {songPing && (
+          <div className="fade-swap flex items-center gap-3 bg-accent/10 border border-accent/40 rounded-lg px-4 py-2.5" role="status" aria-live="polite">
+            <BellIcon className="w-4 h-4 text-accent-hover shrink-0" />
+            <p className="flex-1 min-w-0 text-sm text-ink-dim truncate">
+              {songPing.from_role} ({songPing.from_user}) is pointing at{' '}
+              <span className="font-semibold text-ink">{songPing.title}</span>
+            </p>
+            <button
+              onClick={handlePingPreview}
+              className="shrink-0 h-8 px-3.5 rounded-md border border-edge text-ink-dim hover:text-ink hover:border-accent text-sm font-medium cursor-pointer transition-colors duration-150"
+            >
+              Preview
+            </button>
+            {!readOnly && (
+              <button
+                onClick={handlePingAddToQueue}
+                className="shrink-0 h-8 px-3.5 rounded-md border border-accent/50 text-accent-hover hover:bg-accent/15 text-sm font-medium cursor-pointer transition-colors duration-150"
+              >
+                Add to queue
+              </button>
+            )}
+            <button
+              onClick={() => setSongPing(null)}
+              aria-label="Dismiss"
+              title="Dismiss"
+              className="shrink-0 h-8 w-8 flex items-center justify-center rounded-md text-ink-mute hover:text-ink hover:bg-surface-hover cursor-pointer"
+            >
+              <XIcon className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <div className="flex items-start gap-3">
           <div className="flex-1">
             <SearchBar onSearch={handleSearch} />
@@ -1214,7 +1320,7 @@ function SongsPanel(_props: {}, ref: ForwardedRef<SongsPanelHandle>) {
   );
 }
 
-export default forwardRef<SongsPanelHandle, {}>(SongsPanel);
+export default forwardRef<SongsPanelHandle, SongsPanelProps>(SongsPanel);
 
 // Copies the song's display lyrics as plain text — bold markers stripped,
 // line breaks and verse gaps kept — so it pastes cleanly anywhere.
