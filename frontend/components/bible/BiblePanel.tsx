@@ -538,7 +538,9 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
     if (saved) setRole(saved);
   }, []);
   // Verses detected in the live sermon captions: media only for now.
-  const verseDetect = useVerseDetect(role === 'media');
+  // Sermon verse detection: the wall team (media) and admin.
+  const canDetect = role === 'media' || role === 'admin';
+  const verseDetect = useVerseDetect(canDetect);
 
   // Wall-output layout (preset + blur + box size) — media/admin adjustable,
   // persisted server-side and applied live on the Resolume/OBS capture page.
@@ -1404,7 +1406,7 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
               {autoMirror ? 'Auto-mirror' : 'Mirror: confirm'}
             </button>
           )}
-          {role === 'media' && verseDetect.available && (
+          {canDetect && verseDetect.available && (
             <VerseDetectToggle status={verseDetect.status} onToggle={verseDetect.setEnabled} />
           )}
           {selectedBibleIds.length < MAX_COLUMNS && (
@@ -1743,8 +1745,8 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
         </div>
       )}
 
-      {/* Verse detected in the sermon captions — media sends via the pending-send-safe path */}
-      {role === 'media' && verseDetect.detection && (
+      {/* Verse detected in the sermon captions — media/admin send via the pending-send-safe path */}
+      {canDetect && verseDetect.detection && (
         <VerseDetectBanner
           key={verseDetect.detection.id}
           detection={verseDetect.detection}

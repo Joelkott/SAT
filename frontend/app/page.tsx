@@ -126,36 +126,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Display settings (site-wide; writes, so hidden for guest) */}
-          {role !== 'guest' && (
-            <button
-              onClick={() => setShowDisplaySettings(true)}
-              title="Display settings — line spacing (applies to all devices)"
-              aria-label="Open display settings"
-              className="h-9 w-9 flex items-center justify-center rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer transition-colors duration-150"
-            >
-              <SlidersIcon className="w-4 h-4" />
-            </button>
-          )}
-
-          {/* Pair phone (hidden for guest and when the backend has no /remote routes) */}
-          {role !== 'guest' && remote.state.available && (
-            <button
-              onClick={() => setShowPair(true)}
-              title="Pair a phone to control this window remotely"
-              aria-label="Pair a phone"
-              className="relative h-9 px-2.5 flex items-center gap-2 rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer transition-colors duration-150 text-sm"
-            >
-              <SmartphoneIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">Pair phone</span>
-              {remote.state.pairs.length > 0 && (
-                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-accent-deep text-on-accent text-[10px] font-bold flex items-center justify-center tabular-nums">
-                  {remote.state.pairs.length}
-                </span>
-              )}
-            </button>
-          )}
-
           {/* Help */}
           <button
             onClick={() => setShowHelp(true)}
@@ -166,52 +136,79 @@ export default function Home() {
             <HelpCircleIcon className="w-4 h-4" />
           </button>
 
-          {/* Account menu */}
+          {/* Settings: one menu for display settings, phone pairing, admin tools
+              and the account (replaces the separate header buttons). */}
           <div className="relative">
             <button
               onClick={() => setMenuOpen((v) => !v)}
               aria-expanded={menuOpen}
-              className="flex items-center gap-2 h-9 px-3 rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer text-sm capitalize"
+              aria-haspopup="menu"
+              title="Settings"
+              className="relative flex items-center gap-2 h-9 px-3 rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer text-sm capitalize"
             >
-              <span className="w-6 h-6 rounded-full bg-accent/15 text-accent-hover text-xs font-bold flex items-center justify-center uppercase">
-                {role.slice(0, 1) || '?'}
-              </span>
-              <span className="hidden sm:inline">{role}</span>
+              <SlidersIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">{role || 'Settings'}</span>
               {role === 'guest' && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-sunken border border-edge text-ink-mute normal-case">View only</span>
               )}
+              {remote.state.pairs.length > 0 && (
+                <span
+                  className="min-w-[18px] h-[18px] px-1 rounded-full bg-accent-deep text-on-accent text-[10px] font-bold flex items-center justify-center tabular-nums"
+                  title={`${remote.state.pairs.length} phone(s) paired`}
+                >
+                  {remote.state.pairs.length}
+                </span>
+              )}
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-11 z-50 w-44 bg-surface-raised border border-edge rounded-xl shadow-2xl p-1.5 fade-swap">
+              <div role="menu" className="absolute right-0 top-11 z-50 w-56 bg-surface-raised border border-edge rounded-xl shadow-2xl p-1.5 fade-swap">
+                <div className="px-3 pt-1.5 pb-2 text-xs text-ink-mute">
+                  Signed in as <span className="text-ink font-medium capitalize">{role}</span>
+                </div>
                 {role !== 'guest' && (
-                  <button
-                    onClick={() => { setShowPair(true); setMenuOpen(false); }}
-                    className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
-                  >
-                    <SmartphoneIcon className="w-4 h-4" />
-                    <span className="flex-1">Pair a phone</span>
-                    {remote.state.pairs.length > 0 && (
-                      <span className="text-xs text-ink-mute tabular-nums">{remote.state.pairs.length}</span>
-                    )}
-                  </button>
+                  <>
+                    <button
+                      role="menuitem"
+                      onClick={() => { setShowDisplaySettings(true); setMenuOpen(false); }}
+                      className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+                    >
+                      <SlidersIcon className="w-4 h-4" />
+                      <span className="flex-1">Display settings</span>
+                    </button>
+                    <button
+                      role="menuitem"
+                      onClick={() => { setShowPair(true); setMenuOpen(false); }}
+                      className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+                    >
+                      <SmartphoneIcon className="w-4 h-4" />
+                      <span className="flex-1">Pair a phone</span>
+                      {remote.state.pairs.length > 0 && (
+                        <span className="text-xs text-ink-mute tabular-nums">{remote.state.pairs.length}</span>
+                      )}
+                    </button>
+                  </>
                 )}
                 {role === 'admin' && (
                   <>
                     <button
+                      role="menuitem"
                       onClick={() => { setShowEditLog(true); setMenuOpen(false); }}
-                      className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+                      className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
                     >
                       Edit history
                     </button>
                     <button
+                      role="menuitem"
                       onClick={() => { setShowPw(true); setMenuOpen(false); }}
-                      className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+                      className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
                     >
                       Team passwords
                     </button>
                   </>
                 )}
+                <div className="my-1 border-t border-edge" />
                 <button
+                  role="menuitem"
                   onClick={() => { localStorage.removeItem('sat-token'); localStorage.removeItem('sat-role'); localStorage.removeItem(PAIR_KEY); window.location.href = '/login'; }}
                   className="w-full text-left px-3 py-2 rounded-lg text-sm text-danger hover:bg-danger/10 cursor-pointer"
                 >
