@@ -566,6 +566,54 @@ export const liveApi = {
   },
 };
 
+// Live verse detection from sermon captions (media Bible panel only).
+export interface VerseDetection {
+  id: number;
+  passage: string;     // "JHN 3:17" — navigate/send by this
+  reference: string;   // "John 3:17" — display
+  confidence: number;  // 0..1
+  source: 'explicit' | 'context' | 'jev';
+  snippet: string;
+  created_at: number;
+  age_ms: number;
+}
+
+export interface VerseDetectStatus {
+  configured: boolean;
+  enabled: boolean;
+  stream: 'disabled' | 'connecting' | 'connected' | 'offline';
+  service_status: string;
+  listening: boolean;
+  jev: boolean;
+  last_caption_at: number;
+  current_passage: string;
+}
+
+export interface VerseDetectPoll { version: number; detections: VerseDetection[]; status: VerseDetectStatus }
+
+const VERSE_DETECT_TIMEOUT = 25000; // > server max wait (20s)
+
+export const verseDetectApi = {
+  poll: async (since: number, wait: number, signal?: AbortSignal): Promise<VerseDetectPoll> => {
+    const response = await api.get<VerseDetectPoll>('/verse-detect/suggestions', {
+      params: { since, wait },
+      timeout: VERSE_DETECT_TIMEOUT,
+      signal,
+    });
+    return response.data;
+  },
+
+  status: async (): Promise<VerseDetectStatus> => {
+    const response = await api.get<VerseDetectStatus>('/verse-detect/status');
+    return response.data;
+  },
+
+  setEnabled: async (enabled: boolean): Promise<VerseDetectStatus> => {
+    const response = await api.post<VerseDetectStatus>('/verse-detect/config', { enabled });
+    return response.data;
+  },
+};
+
 // Site-wide display preferences (any signed-in role can adjust).
 export interface DisplayConfig {
   line_spacing: number;
