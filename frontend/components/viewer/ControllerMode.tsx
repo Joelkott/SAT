@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import PairForm from '@/components/viewer/PairForm';
 import ControllerPad from '@/components/viewer/ControllerPad';
 import {
@@ -24,13 +24,14 @@ const sleep = (ms: number, signal: AbortSignal) =>
 
 // Phone controller: unpaired → PairForm, paired → status header + ControllerPad.
 // Commands are relayed to the paired control window, which runs its own handlers.
-export default function ControllerMode() {
+export default function ControllerMode({ settingsButton }: { settingsButton: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [guest, setGuest] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [status, setStatus] = useState<PairStatus | null>(null);
   const [notice, setNotice] = useState('');
   const [live, setLive] = useState<LiveSongState | null>(null);
+  const [showPairInfo, setShowPairInfo] = useState(false);
 
   // ===== Initial state (client only) =====
   useEffect(() => {
@@ -126,9 +127,24 @@ export default function ControllerMode() {
 
   if (!ready || guest) return null;
 
+  // Slim top bar; when paired it carries a small status chip that opens the
+  // pairing details (instead of a big card in the page).
+  const header = (chip?: ReactNode) => (
+    <div
+      className="sticky z-30 h-11 px-4 flex items-center gap-2 bg-black/95 border-b border-edge"
+      style={{ top: 'env(safe-area-inset-top)' }}
+    >
+      <span className="font-semibold">Controller</span>
+      <span className="flex-1" />
+      {chip}
+      {settingsButton}
+    </div>
+  );
+
   if (!token) {
     return (
       <div>
+        {header()}
         {notice && (
           <p className="mx-4 mt-4 px-3 py-2 rounded-lg text-sm bg-surface-raised border border-edge text-ink-dim" role="status">
             {notice}
@@ -154,34 +170,27 @@ export default function ControllerMode() {
     handleUnpaired();
   };
 
+  const chip = (
+    <button
+      type="button"
+      onClick={() => setShowPairInfo(true)}
+      aria-label={`Paired with the ${status?.control_label || ''} window, ${online ? 'online' : 'offline'}. Pairing options`}
+      className="shrink-0 h-8 max-w-[45vw] px-2.5 flex items-center gap-1.5 rounded-full border border-edge bg-surface-raised text-xs text-ink-dim cursor-pointer"
+    >
+      <span className={`shrink-0 w-2 h-2 rounded-full ${online ? 'bg-ok' : 'bg-ink-mute'}`} />
+      <span className="truncate capitalize">{status?.control_label || '…'}</span>
+    </button>
+  );
+
   return (
-    <div className="p-3 space-y-3 max-w-xl mx-auto">
-      <div className="bg-surface-raised border border-edge rounded-xl p-3 flex items-center gap-3">
-        <span
-          className={`shrink-0 w-2.5 h-2.5 rounded-full ${online ? 'bg-ok' : 'bg-ink-mute'}`}
-          aria-label={online ? 'Online' : 'Offline'}
-        />
-        <div className="flex-1 min-w-0">
-          <div className="truncate">
-            Paired with <strong>{status?.control_label || '…'}</strong> window
-          </div>
-          <div className="text-xs text-ink-mute">{status ? (online ? 'Online' : 'Offline') : 'Checking…'}</div>
-        </div>
-        <button
-          type="button"
-          onClick={handleUnpair}
-          className="min-h-10 px-3 rounded-lg text-sm text-ink-dim border border-edge hover:text-ink cursor-pointer"
-        >
-          Unpair
-        </button>
-      </div>
-
+    <div>
+      {header(chip)}
       {status && !online && (
-        <p className="px-3 py-2 rounded-lg text-sm bg-surface-raised border border-edge text-ink-dim" role="status">
+        <div className="bg-warn/15 text-warn text-xs px-4 py-1 text-center" role="status">
           Control window offline — commands are paused
-        </p>
+        </div>
       )}
-
+      <div className="p-3 max-w-xl mx-auto">
       <ControllerPad
         token={token}
         capabilities={capabilities}
@@ -191,6 +200,43 @@ export default function ControllerMode() {
         queueVersion={live?.queue_version}
         onUnpaired={() => handleUnpaired('This phone was unpaired.')}
       />
+      </div>
+
+      {showPairInfo && (
+        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="pair-info-title">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowPairInfo(false)} />
+          <div
+            className="fixed inset-x-0 bottom-0 rounded-t-2xl bg-surface-raised border-t border-edge p-4 space-y-4"
+            style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+          >
+            <div className="flex items-center gap-3">
+              <span className={`shrink-0 w-2.5 h-2.5 rounded-full ${online ? 'bg-ok' : 'bg-ink-mute'}`} />
+              <div className="flex-1 min-w-0">
+                <h2 id="pair-info-title" className="font-semibold truncate">
+                  Paired with the <span className="capitalize">{status?.control_label || '…'}</span> window
+                </h2>
+                <p className="text-xs text-ink-mute">{status ? (online ? 'Online' : 'Offline — commands are paused') : 'Checking…'}</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPairInfo(false)}
+                className="flex-1 min-h-12 rounded-xl border border-edge text-ink-dim font-semibold cursor-pointer"
+              >
+                Done
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowPairInfo(false); handleUnpair(); }}
+                className="flex-1 min-h-12 rounded-xl border border-danger/60 bg-danger/15 text-danger font-semibold cursor-pointer"
+              >
+                Unpair
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

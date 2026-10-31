@@ -91,16 +91,7 @@ export default function ViewerPage() {
       style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       {mode === 'controller' && !guest ? (
-        <>
-          <div
-            className="sticky z-30 h-11 px-4 flex items-center justify-between bg-black/95 border-b border-edge"
-            style={{ top: 'env(safe-area-inset-top)' }}
-          >
-            <span className="font-semibold">Controller</span>
-            {settingsButton}
-          </div>
-          <ControllerMode />
-        </>
+        <ControllerMode settingsButton={settingsButton} />
       ) : (
         <ViewerMode readOnly={guest} fontSize={fontSize} settingsButton={settingsButton} />
       )}
