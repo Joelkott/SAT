@@ -24,7 +24,6 @@ const (
 	maxEarlierCaptions  = 5
 	maxLatestRunes      = 400
 	maxSnippetRunes     = 140
-	maxPollWait         = 20 * time.Second
 	eventBuffer         = 256
 	jevOverallTimeout   = 8 * time.Second
 	jevRateLimitCooloff = time.Minute
@@ -476,8 +475,8 @@ func (d *Detector) Poll(since int64, wait time.Duration) PollResponse {
 	if snap.Version != since || wait <= 0 {
 		return snap
 	}
-	if wait > maxPollWait {
-		wait = maxPollWait
+	if wait > maxPollWait*time.Second {
+		wait = maxPollWait * time.Second
 	}
 	t := time.NewTimer(wait)
 	defer t.Stop()
