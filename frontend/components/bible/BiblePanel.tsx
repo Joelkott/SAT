@@ -27,6 +27,9 @@ import {
 import { normalizeBibleIds } from '@/components/bible/translationGroups';
 import { PlusIcon, XIcon, ChevronRightIcon, BookOpenIcon, PinIcon } from '@/components/icons';
 import { getRole, isGuest } from '@/lib/role';
+import useVerseDetect from '@/components/bible/useVerseDetect';
+import VerseDetectToggle from '@/components/bible/VerseDetectToggle';
+import VerseDetectBanner from '@/components/bible/VerseDetectBanner';
 
 // Language ids whose scripts need taller line boxes (stacked conjuncts).
 const INDIC_LANGS = new Set(['mal', 'hin', 'tam', 'tel', 'kan']);
@@ -534,6 +537,8 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
     const saved = getRole();
     if (saved) setRole(saved);
   }, []);
+  // Verses detected in the live sermon captions: media only for now.
+  const verseDetect = useVerseDetect(role === 'media');
 
   // Wall-output layout (preset + blur + box size) — media/admin adjustable,
   // persisted server-side and applied live on the Resolume/OBS capture page.
@@ -1399,6 +1404,9 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
               {autoMirror ? 'Auto-mirror' : 'Mirror: confirm'}
             </button>
           )}
+          {role === 'media' && verseDetect.available && (
+            <VerseDetectToggle status={verseDetect.status} onToggle={verseDetect.setEnabled} />
+          )}
           {selectedBibleIds.length < MAX_COLUMNS && (
             <button
               onClick={handleAddSlot}
@@ -1733,6 +1741,16 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
             Reset to defaults
           </button>
         </div>
+      )}
+
+      {/* Verse detected in the sermon captions — media sends via the pending-send-safe path */}
+      {role === 'media' && verseDetect.detection && (
+        <VerseDetectBanner
+          key={verseDetect.detection.id}
+          detection={verseDetect.detection}
+          onSend={(p) => handleRef.current.lookupAndSend(p, 'wall')}
+          onDismiss={() => verseDetect.dismiss(verseDetect.detection!.id)}
+        />
       )}
 
       {/* Worship went live — media confirms the mirror (auto-mirror off) */}
