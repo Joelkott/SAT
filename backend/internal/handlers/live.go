@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -324,4 +325,131 @@ func (h *Handler) SetLiveSuggestion(c *fiber.Ctx) error {
 	out := suggestionState.s
 	suggestionState.mu.Unlock()
 	return c.JSON(out)
+}
+
+// --- Song pings: phone viewer points other accounts at a song ---
+//
+// Deliberately separate from suggestionState: suggestions drive the Bible
+// panel / mirror flow, pings only raise a banner in other control windows.
+
+type songPing struct {
+	ID        string `json:"id,omitempty"`
+	SongID    string `json:"song_id,omitempty"`
+	Title     string `json:"title,omitempty"`
+	FromRole  string `json:"from_role,omitempty"`
+	FromUser  string `json:"from_user,omitempty"`
+	CreatedAt int64  `json:"created_at,omitempty"`
+}
+
+const (
+	songPingTTL      = 120 * time.Second
+	songPingMinGap   = 3 * time.Second
+	songPingMaxTitle = 200
+	songPingMaxID    = 64
+)
+
+// validateSongPing trims and checks the client-supplied fields. Titles are
+// truncated rune-safely (Malayalam etc.) rather than rejected.
+func validateSongPing(songID, title string) (string, string, error) {
+	songID = strings.TrimSpace(songID)
+	title = strings.TrimSpace(title)
+	if songID == "" {
+		return "", "", errors.New("song_id is required")
+	}
+	if len(songID) > songPingMaxID {
+		return "", "", errors.New("song_id is too long")
+	}
+	if title == "" {
+		return "", "", errors.New("title is required")
+	}
+	if utf8.RuneCountInString(title) > songPingMaxTitle {
+		title = string([]rune(title)[:songPingMaxTitle])
+	}
+	return songID, title, nil
+}
+
+// songPingFresh reports whether p is set and younger than songPingTTL.
+func songPingFresh(p songPing, now time.Time) bool {
+	return p.CreatedAt > 0 && now.Sub(time.UnixMilli(p.CreatedAt)) <= songPingTTL
+}
+
+// visibleSongPing hides stale pings and the viewer's own pings.
+func visibleSongPing(p songPing, viewer string, now time.Time) songPing {
+	if !songPingFresh(p, now) || p.FromUser == viewer {
+		return songPing{}
+	}
+	return p
+}
+
+// songPingLimiter enforces songPingMinGap between pings per user.
+type songPingLimiter struct {
+	last map[string]time.Time
+}
+
+func (l *songPingLimiter) allow(user string, now time.Time) bool {
+	if l.last == nil {
+		l.last = make(map[string]time.Time)
+	}
+	if prev, ok := l.last[user]; ok && now.Sub(prev) < songPingMinGap {
+		return false
+	}
+	for u, t := range l.last {
+		if now.Sub(t) > songPingTTL {
+			delete(l.last, u)
+		}
+	}
+	l.last[user] = now
+	return true
+}
+
+var songPingState struct {
+	mu  sync.Mutex
+	p   songPing
+	seq int64
+	lim songPingLimiter
+}
+
+// GET /api/live/song-ping — latest fresh ping not sent by the caller.
+func (h *Handler) GetSongPing(c *fiber.Ctx) error {
+	username, _ := c.Locals("username").(string)
+	songPingState.mu.Lock()
+	p := songPingState.p
+	songPingState.mu.Unlock()
+	return c.JSON(visibleSongPing(p, username, time.Now()))
+}
+
+// POST /api/live/song-ping — sender identity comes from auth, never the body.
+func (h *Handler) SendSongPing(c *fiber.Ctx) error {
+	var req struct {
+		SongID string `json:"song_id"`
+		Title  string `json:"title"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	songID, title, err := validateSongPing(req.SongID, req.Title)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+	role, _ := c.Locals("role").(string)
+	username, _ := c.Locals("username").(string)
+	if username == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "Not signed in"})
+	}
+	now := time.Now()
+	songPingState.mu.Lock()
+	defer songPingState.mu.Unlock()
+	if !songPingState.lim.allow(username, now) {
+		return c.Status(429).JSON(fiber.Map{"error": "Wait a moment before notifying again", "code": "rate_limited"})
+	}
+	songPingState.seq++
+	songPingState.p = songPing{
+		ID:        fmt.Sprintf("%d-%d", now.UnixMilli(), songPingState.seq),
+		SongID:    songID,
+		Title:     title,
+		FromRole:  role,
+		FromUser:  username,
+		CreatedAt: now.UnixMilli(),
+	}
+	return c.JSON(songPingState.p)
 }
