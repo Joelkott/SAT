@@ -20,7 +20,7 @@ const (
 	testLease = "lease_bbbbbbbbbbbbbbbbb"
 )
 
-func newTestApp() (*fiber.App, *Hub) {
+func newHTTPTestApp() (*fiber.App, *Hub) {
 	hub := NewHub(NewMemStore())
 	app := fiber.New()
 	app.Use(func(c *fiber.Ctx) error {
@@ -71,7 +71,7 @@ func doReq(t *testing.T, app *fiber.App, method, path string, body any, o reqOpt
 	return resp, out
 }
 
-func issueCode(t *testing.T, app *fiber.App) string {
+func httpIssueCode(t *testing.T, app *fiber.App) string {
 	t.Helper()
 	resp, body := doReq(t, app, "POST", "/api/remote/control/code",
 		map[string]any{"control_id": testCtl, "lease": testLease}, reqOpts{role: "worship"})
@@ -88,9 +88,9 @@ func issueCode(t *testing.T, app *fiber.App) string {
 	return code
 }
 
-func pairPhone(t *testing.T, app *fiber.App) string {
+func httpPairPhone(t *testing.T, app *fiber.App) string {
 	t.Helper()
-	code := issueCode(t, app)
+	code := httpIssueCode(t, app)
 	resp, body := doReq(t, app, "POST", "/api/remote/pair",
 		map[string]any{"code": code, "label": "Joel's phone"}, reqOpts{role: "media"})
 	if resp.StatusCode != 200 {
@@ -110,7 +110,7 @@ func pairPhone(t *testing.T, app *fiber.App) string {
 }
 
 func TestGuestForbiddenOnRemoteRoutes(t *testing.T) {
-	app, _ := newTestApp()
+	app, _ := newHTTPTestApp()
 	cases := []struct {
 		method, path string
 		body         any
@@ -136,7 +136,7 @@ func TestGuestForbiddenOnRemoteRoutes(t *testing.T) {
 }
 
 func TestGuestCanReadLiveState(t *testing.T) {
-	app, _ := newTestApp()
+	app, _ := newHTTPTestApp()
 	resp, body := doReq(t, app, "GET", "/api/live/state?wait=0", nil, reqOpts{role: "guest"})
 	if resp.StatusCode != 200 {
 		t.Fatalf("got %d, want 200", resp.StatusCode)
@@ -149,7 +149,7 @@ func TestGuestCanReadLiveState(t *testing.T) {
 }
 
 func TestPublishLiveAndWait(t *testing.T) {
-	app, _ := newTestApp()
+	app, _ := newHTTPTestApp()
 	_, before := doReq(t, app, "GET", "/api/live/state", nil, reqOpts{role: "guest"})
 	v := int64(before["version"].(float64))
 
@@ -181,7 +181,7 @@ func TestPublishLiveAndWait(t *testing.T) {
 }
 
 func TestPublishLiveValidation(t *testing.T) {
-	app, _ := newTestApp()
+	app, _ := newHTTPTestApp()
 	bad := []map[string]any{
 		{"title": "no id"},
 		{"song_id": strings.Repeat("x", 65), "title": "t"},
@@ -197,8 +197,8 @@ func TestPublishLiveValidation(t *testing.T) {
 }
 
 func TestClaimWrongAndRightCode(t *testing.T) {
-	app, _ := newTestApp()
-	code := issueCode(t, app)
+	app, _ := newHTTPTestApp()
+	code := httpIssueCode(t, app)
 	wrong := "000000"
 	if code == wrong {
 		wrong = "111111"
@@ -216,8 +216,8 @@ func TestClaimWrongAndRightCode(t *testing.T) {
 }
 
 func TestClaimRateLimited(t *testing.T) {
-	app, _ := newTestApp()
-	issueCode(t, app)
+	app, _ := newHTTPTestApp()
+	httpIssueCode(t, app)
 	var resp *http.Response
 	var body map[string]any
 	for i := 0; i < 8; i++ {
@@ -238,7 +238,7 @@ func TestClaimRateLimited(t *testing.T) {
 }
 
 func TestBogusPairTokenIs403NotLogout(t *testing.T) {
-	app, _ := newTestApp()
+	app, _ := newHTTPTestApp()
 	for _, tc := range []struct{ method, path string }{
 		{"GET", "/api/remote/pair/status"},
 		{"POST", "/api/remote/commands"},
@@ -257,8 +257,8 @@ func TestBogusPairTokenIs403NotLogout(t *testing.T) {
 }
 
 func TestPairStatus(t *testing.T) {
-	app, _ := newTestApp()
-	tok := pairPhone(t, app)
+	app, _ := newHTTPTestApp()
+	tok := httpPairPhone(t, app)
 	resp, body := doReq(t, app, "GET", "/api/remote/pair/status", nil, reqOpts{role: "media", pairToken: tok})
 	if resp.StatusCode != 200 || body["paired"] != true {
 		t.Fatalf("status: %d %v", resp.StatusCode, body)
@@ -280,8 +280,8 @@ func TestPairStatus(t *testing.T) {
 }
 
 func TestFullRelay(t *testing.T) {
-	app, _ := newTestApp()
-	tok := pairPhone(t, app)
+	app, _ := newHTTPTestApp()
+	tok := httpPairPhone(t, app)
 
 	result := make(chan map[string]any, 1)
 	go func() {
@@ -332,8 +332,8 @@ func TestFullRelay(t *testing.T) {
 }
 
 func TestSubmitBadCommandID(t *testing.T) {
-	app, _ := newTestApp()
-	tok := pairPhone(t, app)
+	app, _ := newHTTPTestApp()
+	tok := httpPairPhone(t, app)
 	for _, id := range []string{"short", strings.Repeat("a", 65), "bad/id_12345"} {
 		resp, _ := doReq(t, app, "POST", "/api/remote/commands",
 			map[string]any{"id": id, "type": "song.next"}, reqOpts{role: "media", pairToken: tok})
@@ -343,8 +343,8 @@ func TestSubmitBadCommandID(t *testing.T) {
 	}
 }
 
-func TestLeaseConflict(t *testing.T) {
-	app, _ := newTestApp()
+func TestHTTPLeaseConflict(t *testing.T) {
+	app, _ := newHTTPTestApp()
 	resp, _ := doReq(t, app, "GET",
 		"/api/remote/control/poll?control_id="+testCtl+"&lease="+testLease+"&wait=0", nil, reqOpts{role: "worship"})
 	if resp.StatusCode != 200 {
@@ -358,7 +358,7 @@ func TestLeaseConflict(t *testing.T) {
 }
 
 func TestInvalidControlID(t *testing.T) {
-	app, _ := newTestApp()
+	app, _ := newHTTPTestApp()
 	for _, id := range []string{"x", strings.Repeat("a", 65), "ctl_aaaaaaaa/aaaaaaaaa"} {
 		resp, _ := doReq(t, app, "POST", "/api/remote/control/code",
 			map[string]any{"control_id": id, "lease": testLease}, reqOpts{role: "worship"})
@@ -374,8 +374,8 @@ func TestInvalidControlID(t *testing.T) {
 }
 
 func TestCancelCodeAndUnpairPhone(t *testing.T) {
-	app, _ := newTestApp()
-	tok := pairPhone(t, app)
+	app, _ := newHTTPTestApp()
+	tok := httpPairPhone(t, app)
 	_, poll := doReq(t, app, "GET",
 		"/api/remote/control/poll?control_id="+testCtl+"&lease="+testLease+"&wait=0", nil, reqOpts{role: "worship"})
 	pairs, _ := poll["pairs"].([]any)
