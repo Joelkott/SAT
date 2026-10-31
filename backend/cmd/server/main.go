@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -15,12 +16,12 @@ import (
 	"github.com/yourusername/audience-stage-teleprompter/internal/auth"
 	"github.com/yourusername/audience-stage-teleprompter/internal/backup"
 	"github.com/yourusername/audience-stage-teleprompter/internal/bible"
-	"github.com/yourusername/audience-stage-teleprompter/internal/captionstream"
 	"github.com/yourusername/audience-stage-teleprompter/internal/database"
 	"github.com/yourusername/audience-stage-teleprompter/internal/handlers"
 	"github.com/yourusername/audience-stage-teleprompter/internal/propresenter"
 	"github.com/yourusername/audience-stage-teleprompter/internal/remote"
 	"github.com/yourusername/audience-stage-teleprompter/internal/typesense"
+	"github.com/yourusername/audience-stage-teleprompter/internal/versedetect"
 )
 
 func main() {
@@ -156,6 +157,16 @@ func main() {
 	bibleESV := bible.NewEsvProvider(esvAPIKey)
 	bibleNET := bible.NewNetProvider()
 	bibleHandler := bible.NewHandler(bibleClient, bibleLocal, bibleESV, bibleNET)
+
+	// Live verse detection (phase 5): reads the sermon caption stream and
+	// suggests cited verses to the media Bible panel. TYPESAFE_API_KEY comes
+	// from env only; unset = local parsing only. VERSE_DETECT_SSE_URL=off disables.
+	verseDetector := versedetect.New(versedetect.Options{
+		StreamURL: os.Getenv("VERSE_DETECT_SSE_URL"),
+		JevAPIKey: os.Getenv("TYPESAFE_API_KEY"),
+		Canon:     bibleLocal,
+	})
+	verseDetector.Start(context.Background())
 	if bibleClient.IsConfigured() {
 		log.Println("Bible integration enabled (api.bible + local KJV/MOV/AMPC/ASV/BBE/MKJV/CEB)")
 	} else {
@@ -170,27 +181,6 @@ func main() {
 
 	// Initialize handlers
 	h := handlers.New(db, ts, backupManager, ppClient, skipTypesense)
-
-	// Initialize caption stream client (optional - only if JGM_CAPTIONS_URL is set)
-	jgmCaptionsURL := os.Getenv("JGM_CAPTIONS_URL")
-	if jgmCaptionsURL != "" {
-		// Create caption handler that forwards to Bible parsing
-		captionHandler := func(text string, timestamp string) {
-			// Forward caption to the ReceiveCaption handler for Bible reference parsing
-			log.Printf("📖 Received caption from stream: %s", text)
-			h.ProcessCaptionText(text, timestamp)
-		}
-
-		// Create and start caption stream client
-		streamClient := captionstream.NewClient(jgmCaptionsURL+"/audience/stream", captionHandler)
-		if err := streamClient.Start(); err != nil {
-			log.Printf("⚠️  Failed to start caption stream client: %v", err)
-		} else {
-			log.Printf("✅ Caption stream client started: %s", jgmCaptionsURL)
-		}
-	} else {
-		log.Println("ℹ️  JGM_CAPTIONS_URL not set - caption stream disabled")
-	}
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
@@ -286,6 +276,9 @@ func main() {
 	// POST /api/live/song are team-only; GET /api/live/state is open to guests.
 	remote.Register(api, remoteH, auth.RequireNonGuest)
 
+	// Live verse-detection suggestions — media/admin only
+	versedetect.Register(api, verseDetector)
+
 	// Site-wide display preferences (line spacing etc.) — any signed-in role
 	api.Get("/display-config", h.GetDisplayConfig)
 	api.Put("/display-config", h.SetDisplayConfig)
@@ -329,13 +322,6 @@ func main() {
 	bibleGroup.Get("/bibles/:bibleId/chapters/:chapterId", bibleHandler.GetChapter)
 	bibleGroup.Get("/bibles/:bibleId/verses/:verseId", bibleHandler.GetVerse)
 	bibleGroup.Get("/bibles/:bibleId/passages/:passageId", bibleHandler.GetPassage)
-
-	// Captions integration (from Jgm-live-captions)
-	api.Post("/caption", h.ReceiveCaption)
-	api.Get("/bible/sse", h.BibleSSE) // Server-Sent Events for Bible verses
-
-	// Bible references from remote parser (for VPS deployment)
-	api.Post("/bible-references", h.ReceiveParsedReferences)
 
 	// Start server
 	log.Printf("Server starting on port %s", port)

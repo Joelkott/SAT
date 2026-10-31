@@ -52,14 +52,10 @@ services:
       AUTH_MEDIA_PASSWORD: ${AUTH_MEDIA_PASSWORD:-}
       AUTH_WORSHIP_PASSWORD: ${AUTH_WORSHIP_PASSWORD:-}
       AUTH_GUEST_PASSWORD: ${AUTH_GUEST_PASSWORD:-}
-      # Caption/AI Bible reference pipeline (optional)
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
-      JGM_CAPTIONS_URL: ${JGM_CAPTIONS_URL:-}
-      BIBLE_PARSER_API_KEY: ${BIBLE_PARSER_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma2:2b}
-      ENABLE_CAPTION_PROCESSING: ${ENABLE_CAPTION_PROCESSING:-false}
+      # Live verse detection (phase 5). Empty URL = public captions stream; "off" disables.
+      VERSE_DETECT_SSE_URL: ${VERSE_DETECT_SSE_URL:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
       DISABLE_TYPESENSE: ${DISABLE_TYPESENSE:-false}
     volumes:
       # Host bind-mount so backups survive `docker-compose down -v` and are

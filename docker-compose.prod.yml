@@ -50,6 +50,9 @@ services:
       AUTH_MEDIA_PASSWORD: ${AUTH_MEDIA_PASSWORD:-}
       AUTH_WORSHIP_PASSWORD: ${AUTH_WORSHIP_PASSWORD:-}
       AUTH_GUEST_PASSWORD: ${AUTH_GUEST_PASSWORD:-}
+      # Live verse detection (phase 5). Empty URL = public captions stream; "off" disables.
+      VERSE_DETECT_SSE_URL: ${VERSE_DETECT_SSE_URL:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
     volumes:
       - backups_data:/app/backups
 

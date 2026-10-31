@@ -145,15 +145,12 @@ func (s *Service) Me(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"role": cl.Role, "username": cl.Username})
 }
 
-// Middleware guards everything except login/health and endpoints that carry
-// their own API-key auth (remote caption parser, caption SSE stream).
+// Middleware guards everything except login/health (plus the public scripture
+// output GETs below).
 func (s *Service) Middleware() fiber.Handler {
 	open := map[string]bool{
-		"/api/health":           true,
-		"/api/auth/login":       true,
-		"/api/caption":          true,
-		"/api/bible-references": true,
-		"/api/bible/sse":        true,
+		"/api/health":     true,
+		"/api/auth/login": true,
 	}
 	return func(c *fiber.Ctx) error {
 		if open[c.Path()] {
