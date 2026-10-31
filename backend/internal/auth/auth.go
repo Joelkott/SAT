@@ -218,6 +218,17 @@ func RequireProPresenter(c *fiber.Ctx) error {
 	return c.Next()
 }
 
+// RequireNonGuest gates remote pairing/control and live-song publishing. Guest
+// is viewer-only and can never pair or send controller commands (user decision
+// 2026-10-31). Mounted at the /api/remote group level so GET long-polls — which
+// readOnlyViolation lets through — are covered too.
+func RequireNonGuest(c *fiber.Ctx) error {
+	if r, _ := c.Locals("role").(string); r == "guest" || r == "" {
+		return c.Status(403).JSON(fiber.Map{"error": "Remote control requires a team account"})
+	}
+	return c.Next()
+}
+
 // SetPassword handles PUT /api/auth/users/:username/password (admin only):
 // lets the admin reset any team account, including their own.
 func (s *Service) SetPassword(c *fiber.Ctx) error {

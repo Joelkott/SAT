@@ -167,3 +167,36 @@ func TestMiddlewareGuestReadOnly(t *testing.T) {
 		t.Fatalf("worship POST: got %v %v, want 200", resp.StatusCode, err)
 	}
 }
+
+func TestRequireNonGuest(t *testing.T) {
+	cases := []struct {
+		role string
+		want int
+	}{
+		{"admin", 200},
+		{"media", 200},
+		{"worship", 200},
+		{"guest", 403},
+		{"", 403},
+	}
+	for _, tc := range cases {
+		t.Run("role="+tc.role, func(t *testing.T) {
+			resp, err := gateApp(tc.role, RequireNonGuest).Test(httptest.NewRequest("GET", "/api/remote/control/poll", nil))
+			if err != nil {
+				t.Fatalf("app.Test: %v", err)
+			}
+			if resp.StatusCode != tc.want {
+				t.Fatalf("role %q: got %d, want %d", tc.role, resp.StatusCode, tc.want)
+			}
+			if tc.want == 403 {
+				var body map[string]string
+				if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
+				if body["error"] == "" {
+					t.Fatalf("role %q: 403 body has no error message", tc.role)
+				}
+			}
+		})
+	}
+}
