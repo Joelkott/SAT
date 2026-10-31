@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
+import type { ForwardedRef } from 'react';
 import { songsApi, Song, SearchResult, propresenterApi, ProPresenterStatus, queueApi } from '@/lib/api';
 import SearchBar from '@/components/SearchBar';
 import SongList from '@/components/SongList';
@@ -12,6 +13,7 @@ import { FormattedLyrics, LyricBlocks, toggleBoldInTextarea, useLyricSpacing, IN
 import { useScrollMemory } from '@/lib/scrollMemory';
 import { copyText } from '@/lib/clipboard';
 import { useRole, isGuest } from '@/lib/role';
+import { liveSongApi, PanelResult } from '@/lib/remote';
 import {
   DEFAULT_ALIGN,
   DEFAULT_FONT,
@@ -23,10 +25,28 @@ import {
   setFontFamily,
 } from '@/lib/displayPrefs';
 
-export default function SongsPanel() {
+// Imperative handle used by the control-window remote executor: every method
+// reuses the panel's own handlers so remote commands get the same guards,
+// BroadcastChannel messages and ProPresenter sync as a local click.
+export interface SongsPanelHandle {
+  sendSongLive(songId: string): Promise<PanelResult>;
+  queueStep(dir: 1 | -1): Promise<PanelResult>;
+  clearLive(): Promise<PanelResult>;
+  queueAdd(songId: string): Promise<PanelResult>;
+  queueRemove(queueItemId: number): Promise<PanelResult>;
+  zoom(arg: { delta?: number; value?: number }): Promise<PanelResult>;
+  scroll(dir: 1 | -1, amount: 'step' | 'page'): Promise<PanelResult>;
+  refreshQueue(): void;
+  republishLive(): void;
+}
+
+function SongsPanel(_props: {}, ref: ForwardedRef<SongsPanelHandle>) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [liveSong, setLiveSong] = useState<Song | null>(null);
+  // Live song id, updated synchronously (two quick remote "next" commands must
+  // see the new live id before React re-renders).
+  const liveSongIdRef = useRef<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewSong, setPreviewSong] = useState<Song | null>(null);
@@ -350,10 +370,20 @@ export default function SongsPanel() {
     recordOpen(song.id);
   }, [recordOpen]);
 
+  // Tell the backend what's live so phone viewers can follow it. Best-effort:
+  // an older backend (404) or a network blip must never block the display.
+  const publishLive = (song: Song | null) => {
+    if (isGuest()) return;
+    liveSongApi
+      .publish(song ? { song_id: song.id, title: song.title, language: song.language || '' } : { cleared: true })
+      .catch((err) => console.warn('Live song publish failed:', err?.response?.status || err?.message));
+  };
+
   const handleSendToLive = useCallback(async (song: Song) => {
     // guest is view-only: never projects anything.
     if (isGuest()) return;
     recordOpen(song.id);
+    liveSongIdRef.current = song.id;
     setLiveSong(song);
     setSelectedSong(song);
     setShowPreviewModal(false);
@@ -375,6 +405,7 @@ export default function SongsPanel() {
     };
     localStorage.setItem('lyrics-display-current', JSON.stringify(payload.song));
     displayChannelRef.current?.postMessage(payload);
+    publishLive(song);
 
     // Also send current zoom level when song changes
     if (displayChannelRef.current) {
@@ -473,9 +504,11 @@ export default function SongsPanel() {
       if (hoverSong?.id === songId) setHoverSong(null);
       if (selectedSong?.id === songId) {
         setSelectedSong(null);
+        liveSongIdRef.current = null;
         setLiveSong(null);
         localStorage.removeItem('lyrics-display-current');
         displayChannelRef.current?.postMessage({ type: 'clear' });
+        publishLive(null);
       }
       return true;
     } catch (error) {
@@ -550,10 +583,120 @@ export default function SongsPanel() {
   // (selected/hover song) is left alone so the operator keeps their place.
   const handleClearLive = () => {
     if (isGuest()) return;
+    liveSongIdRef.current = null;
     setLiveSong(null);
     localStorage.removeItem('lyrics-display-current');
     displayChannelRef.current?.postMessage({ type: 'clear', blank: true });
+    publishLive(null);
   };
+
+  // ===== Remote control handle =====
+  const VIEW_ONLY: PanelResult = { ok: false, message: 'View-only account' };
+
+  const sendSongLive = async (songId: string): Promise<PanelResult> => {
+    if (isGuest()) return VIEW_ONLY;
+    const song = songs.find((s) => s.id === songId) ?? (await songsApi.getById(songId).catch(() => null));
+    if (!song) return { ok: false, message: 'Song not found' };
+    await handleSendToLive(song);
+    return { ok: true, message: song.title };
+  };
+
+  const queueStep = async (dir: 1 | -1): Promise<PanelResult> => {
+    if (isGuest()) return VIEW_ONLY;
+    // Always fetch the queue fresh: the remote may have changed it meanwhile.
+    let items;
+    try {
+      items = await queueApi.getAll();
+    } catch {
+      return { ok: false, message: "Couldn't load the queue" };
+    }
+    if (!items.length) return { ok: false, message: 'The queue is empty' };
+    const idx = items.findIndex((i) => i.song_id === liveSongIdRef.current);
+    let pos: number;
+    if (idx === -1) {
+      if (dir === -1) return { ok: false, message: "The live song isn't in the queue" };
+      pos = 0;
+    } else {
+      pos = idx + dir;
+    }
+    const target = items[pos];
+    if (!target) return { ok: false, message: 'End of queue' };
+    const song = target.song ?? (await songsApi.getById(target.song_id).catch(() => null));
+    if (!song) return { ok: false, message: 'Song not found' };
+    await handleSendToLive(song);
+    return { ok: true, message: `${song.title} (${pos + 1}/${items.length})` };
+  };
+
+  const clearLive = async (): Promise<PanelResult> => {
+    if (isGuest()) return VIEW_ONLY;
+    handleClearLive();
+    return { ok: true, message: 'Cleared to black' };
+  };
+
+  const queueAdd = async (songId: string): Promise<PanelResult> => {
+    if (isGuest()) return VIEW_ONLY;
+    try {
+      await queueApi.add(songId);
+      setQueueRefresh((n) => n + 1);
+      return { ok: true, message: 'Added to queue' };
+    } catch (err: any) {
+      if (err?.response?.status === 409) return { ok: false, message: 'Already in the queue' };
+      return { ok: false, message: "Couldn't add to the queue" };
+    }
+  };
+
+  const queueRemove = async (queueItemId: number): Promise<PanelResult> => {
+    if (isGuest()) return VIEW_ONLY;
+    try {
+      await queueApi.remove(queueItemId);
+      setQueueRefresh((n) => n + 1);
+      return { ok: true, message: 'Removed from queue' };
+    } catch {
+      return { ok: false, message: "Couldn't remove it" };
+    }
+  };
+
+  const zoom = async ({ delta, value }: { delta?: number; value?: number }): Promise<PanelResult> => {
+    if (isGuest()) return VIEW_ONLY;
+    // Same 0.5–3.0 clamp as ZoomControls.
+    const next = Math.round(Math.min(3.0, Math.max(0.5, value ?? (zoomLevel + (delta ?? 0)))) * 100) / 100;
+    setZoomLevel(next);
+    displayChannelRef.current?.postMessage({ type: 'zoom', zoomLevel: next });
+    return { ok: true, message: `Zoom ${Math.round(next * 100)}%` };
+  };
+
+  // Consumed by the /display window only; the control window never listens.
+  const scroll = async (dir: 1 | -1, amount: 'step' | 'page'): Promise<PanelResult> => {
+    if (isGuest()) return VIEW_ONLY;
+    if (!liveSongIdRef.current) return { ok: false, message: 'Nothing live to scroll' };
+    displayChannelRef.current?.postMessage({ type: 'scroll', dir, amount });
+    return { ok: true };
+  };
+
+  const refreshQueue = () => {
+    setQueueRefresh((n) => n + 1);
+  };
+
+  // Used after a backend restart (poll reports live_updated_at 0).
+  const republishLive = () => {
+    if (liveSong) publishLive(liveSong);
+  };
+
+  // Latest-ref delegation: the handle is created once but always calls the
+  // current render's closures (fresh songs, zoomLevel, liveSong).
+  const apiRef = useRef<SongsPanelHandle>(null!);
+  apiRef.current = { sendSongLive, queueStep, clearLive, queueAdd, queueRemove, zoom, scroll, refreshQueue, republishLive };
+  useImperativeHandle(ref, () => ({
+    sendSongLive: (id) => apiRef.current.sendSongLive(id),
+    queueStep: (d) => apiRef.current.queueStep(d),
+    clearLive: () => apiRef.current.clearLive(),
+    queueAdd: (id) => apiRef.current.queueAdd(id),
+    queueRemove: (id) => apiRef.current.queueRemove(id),
+    zoom: (a) => apiRef.current.zoom(a),
+    scroll: (d, a) => apiRef.current.scroll(d, a),
+    refreshQueue: () => apiRef.current.refreshQueue(),
+    republishLive: () => apiRef.current.republishLive(),
+  }), []);
 
   // SongForm registers its dirty-checked close here so the modal X goes
   // through the same "discard unsaved changes?" confirm.
@@ -1070,6 +1213,8 @@ export default function SongsPanel() {
     </>
   );
 }
+
+export default forwardRef<SongsPanelHandle, {}>(SongsPanel);
 
 // Copies the song's display lyrics as plain text — bold markers stripped,
 // line breaks and verse gaps kept — so it pastes cleanly anywhere.
