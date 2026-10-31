@@ -183,6 +183,18 @@ export default function Home() {
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-11 z-50 w-44 bg-surface-raised border border-edge rounded-xl shadow-2xl p-1.5 fade-swap">
+                {role !== 'guest' && (
+                  <button
+                    onClick={() => { setShowPair(true); setMenuOpen(false); }}
+                    className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+                  >
+                    <SmartphoneIcon className="w-4 h-4" />
+                    <span className="flex-1">Pair a phone</span>
+                    {remote.state.pairs.length > 0 && (
+                      <span className="text-xs text-ink-mute tabular-nums">{remote.state.pairs.length}</span>
+                    )}
+                  </button>
+                )}
                 {role === 'admin' && (
                   <>
                     <button

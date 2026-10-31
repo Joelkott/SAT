@@ -221,9 +221,13 @@ export function useRemoteControl(opts: UseRemoteControlOptions): RemoteControl {
       let fails = 0;
       let lastQueueVersion = -1;
       let republished = false;
+      // The first poll returns at once so the Pair phone control appears
+      // immediately instead of after a full long-poll wait.
+      let first = true;
       while (!ac.signal.aborted) {
         try {
-          const r = await remoteApi.poll(controlIdRef.current, leaseRef.current, POLL_WAIT_S, ac.signal);
+          const r = await remoteApi.poll(controlIdRef.current, leaseRef.current, first ? 0 : POLL_WAIT_S, ac.signal);
+          first = false;
           if (ac.signal.aborted) break;
           fails = 0;
           setState((s) => ({
