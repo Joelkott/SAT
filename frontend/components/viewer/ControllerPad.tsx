@@ -77,6 +77,8 @@ export default function ControllerPad({
   // Tapping a song title asks before notifying the other teams.
   const [confirmSong, setConfirmSong] = useState<{ id: string; title: string } | null>(null);
   const [notifying, setNotifying] = useState(false);
+  // Clear blanks the live display, so it asks first.
+  const [confirmClear, setConfirmClear] = useState(false);
 
   // Bible
   const [reference, setReference] = useState('');
@@ -307,8 +309,8 @@ export default function ControllerPad({
               >
                 Song list
               </button>
-              <button type="button" className={btnDanger} disabled={isBusy('song.clear')} onClick={() => send('song.clear')}>
-                Clear to black
+              <button type="button" className={btnDanger} disabled={isBusy('song.clear')} onClick={() => setConfirmClear(true)}>
+                Clear
               </button>
             </div>
           )}
@@ -475,6 +477,39 @@ export default function ControllerPad({
                   </ul>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear confirmation (second step) */}
+      {confirmClear && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="clear-confirm-title">
+          <div className="absolute inset-0 bg-black/70" onClick={() => setConfirmClear(false)} />
+          <div
+            className="relative w-full sm:max-w-sm m-0 sm:m-4 rounded-t-2xl sm:rounded-2xl bg-surface-raised border border-edge p-5 space-y-4"
+            style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+          >
+            <div>
+              <h2 id="clear-confirm-title" className="font-semibold">Clear the display?</h2>
+              <p className="mt-1 text-sm text-ink-dim">The projector goes black until the next song is sent.</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmClear(false)}
+                className="flex-1 min-h-12 rounded-xl border border-edge text-ink-dim font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => { setConfirmClear(false); send('song.clear'); }}
+                disabled={isBusy('song.clear')}
+                className="flex-1 min-h-12 rounded-xl border border-danger/60 bg-danger/20 text-danger font-semibold cursor-pointer disabled:opacity-40"
+              >
+                Clear
+              </button>
             </div>
           </div>
         </div>
