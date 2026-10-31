@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { queueApi, songsApi, QueueItem, Song } from '@/lib/api';
 import { liveSongApi, LiveSongState } from '@/lib/remote';
 import { LyricBlocks, useLyricSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
@@ -9,46 +9,25 @@ import SearchSheet from '@/components/viewer/SearchSheet';
 
 interface ViewerModeProps {
   readOnly: boolean;
-  wakeLockSupported?: boolean;
+  fontSize: number;
+  settingsButton: ReactNode;
 }
 
 const INDIC_LANGUAGES = ['malayalam', 'hindi', 'tamil', 'telugu', 'kannada'];
-const FONT_KEY = 'sat-viewer-font';
-const FONT_DEFAULT = 22;
-const FONT_MIN = 14;
-const FONT_MAX = 40;
-const FONT_STEP = 2;
-
-const clampFont = (n: number) => Math.min(FONT_MAX, Math.max(FONT_MIN, n));
 
 // Pocket stage monitor: follows whatever is live on the projector. Prev/Next
 // browse the queue on this phone only — the viewer never changes live state.
-export default function ViewerMode({ readOnly, wakeLockSupported = true }: ViewerModeProps) {
+export default function ViewerMode({ readOnly, fontSize, settingsButton }: ViewerModeProps) {
   const [live, setLive] = useState<LiveSongState | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
   const [liveSongData, setLiveSongData] = useState<Song | null>(null);
   const [browse, setBrowse] = useState<Song | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [fontSize, setFontSize] = useState(FONT_DEFAULT);
   const [showQueue, setShowQueue] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [loadError, setLoadError] = useState('');
   const songCacheRef = useRef<Map<string, Song>>(new Map());
   const spacing = useLyricSpacing();
-
-  // ===== Font size (persisted per device) =====
-  useEffect(() => {
-    const stored = Number(localStorage.getItem(FONT_KEY));
-    if (stored) setFontSize(clampFont(stored));
-  }, []);
-
-  const changeFont = (delta: number) => {
-    setFontSize((f) => {
-      const next = clampFont(f + delta);
-      localStorage.setItem(FONT_KEY, String(next));
-      return next;
-    });
-  };
 
   // ===== Live state long-poll (promise-chained, no timers while healthy) =====
   useEffect(() => {
@@ -176,39 +155,34 @@ export default function ViewerMode({ readOnly, wakeLockSupported = true }: Viewe
 
   return (
     <div>
-      {/* Live header */}
+      {/* One slim header row: live dot, title, queue position / back-to-live,
+          settings. Everything else goes to the lyrics. */}
       <div
-        className="sticky z-20 bg-black/95 border-b border-edge px-4 py-2"
-        style={{ top: 'calc(env(safe-area-inset-top) + 3rem)' }}
+        className="sticky z-20 h-11 bg-black/95 border-b border-edge px-4 flex items-center gap-2 min-w-0"
+        style={{ top: 'env(safe-area-inset-top)' }}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          {hasLive && <span className="w-2.5 h-2.5 shrink-0 rounded-full bg-live animate-pulse" aria-label="Live" />}
-          <span className="flex-1 min-w-0 truncate font-semibold">
-            {shown ? shown.title : hasLive ? live?.song?.title : 'Nothing live'}
-          </span>
-          {livePos !== -1 && (
-            <span className="shrink-0 px-2 py-0.5 rounded-full text-xs bg-surface-raised border border-edge text-ink-dim tabular-nums">
-              {livePos + 1} / {queue.length} in queue
-            </span>
+        {hasLive && !browse && <span className="w-2 h-2 shrink-0 rounded-full bg-live animate-pulse" aria-label="Live" />}
+        <span className="flex-1 min-w-0 truncate font-semibold text-sm">
+          {shown ? shown.title : hasLive ? live?.song?.title : 'Waiting for a song…'}
+          {hasLive && !browse && live?.source?.role && (
+            <span className="font-normal text-ink-mute"> · {live.source.role}</span>
           )}
-        </div>
-        <div className="text-xs text-ink-mute truncate mt-0.5">
-          {browse
-            ? `Browsing: ${browse.title}`
-            : hasLive
-              ? `Live from ${live?.source?.role ?? '—'}`
-              : 'Waiting for a song…'}
-        </div>
-        {browse && (
+        </span>
+        {browse ? (
           <button
             type="button"
             onClick={handleBackToLive}
-            className="mt-2 w-full min-h-10 rounded-full bg-accent-deep text-on-accent text-sm font-medium cursor-pointer"
+            className="shrink-0 h-8 px-3 rounded-full bg-accent-deep text-on-accent text-xs font-semibold cursor-pointer"
+            aria-label="Back to the live song"
           >
-            Not following · Back to live
-            {hasLive && live?.song?.title ? ` (${live.song.title})` : ''}
+            ● Live
           </button>
-        )}
+        ) : livePos !== -1 ? (
+          <span className="shrink-0 text-xs text-ink-mute tabular-nums">
+            {livePos + 1}/{queue.length}
+          </span>
+        ) : null}
+        {settingsButton}
       </div>
 
       {reconnecting && (
@@ -216,10 +190,10 @@ export default function ViewerMode({ readOnly, wakeLockSupported = true }: Viewe
       )}
       {loadError && <div className="bg-danger/10 text-danger text-xs px-4 py-1 text-center">{loadError}</div>}
 
-      {/* Lyrics body (bottom padding clears the fixed control bar) */}
+      {/* Lyrics body (bottom padding clears the one-row control bar) */}
       <div
-        className="px-4 py-5"
-        style={{ paddingBottom: 'calc(9rem + env(safe-area-inset-bottom))' }}
+        className="px-4 pt-4"
+        style={{ paddingBottom: 'calc(4.5rem + env(safe-area-inset-bottom))' }}
       >
         {shown ? (
           <div
@@ -238,52 +212,22 @@ export default function ViewerMode({ readOnly, wakeLockSupported = true }: Viewe
             <p className="text-sm mt-1">Waiting for a song…</p>
           </div>
         )}
-        {!wakeLockSupported && (
-          <p className="mt-8 text-center text-xs text-ink-mute">Keep-screen-on isn&apos;t available in this browser</p>
-        )}
       </div>
 
-      {/* Bottom control bar (one-handed, ≥48px targets) */}
-      <div className="fixed inset-x-0 bottom-0 z-30 bg-black/95 border-t border-edge px-3 pt-2 pb-[env(safe-area-inset-bottom)]">
+      {/* Bottom control bar: one row, one-handed, ≥48px targets */}
+      <div className="fixed inset-x-0 bottom-0 z-30 bg-black/95 border-t border-edge px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <div className="flex gap-2">
-          <button type="button" className={barBtn} onClick={() => handleStep(-1)} disabled={queue.length === 0}>
-            ‹ Prev
+          <button type="button" className={barBtn} onClick={() => handleStep(-1)} disabled={queue.length === 0} aria-label="Previous song">
+            ‹
           </button>
-          <button
-            type="button"
-            className={barBtn}
-            onClick={handleBackToLive}
-          >
-            Live
-          </button>
-          <button type="button" className={barBtn} onClick={() => handleStep(1)} disabled={queue.length === 0}>
-            Next ›
-          </button>
-        </div>
-        <div className="flex gap-2 mt-2 mb-2">
           <button type="button" className={barBtn} onClick={() => setShowQueue(true)}>
             Queue
           </button>
           <button type="button" className={barBtn} onClick={() => setShowSearch(true)}>
             Search
           </button>
-          <button
-            type="button"
-            className={barBtn}
-            onClick={() => changeFont(-FONT_STEP)}
-            disabled={fontSize <= FONT_MIN}
-            aria-label="Smaller text"
-          >
-            A−
-          </button>
-          <button
-            type="button"
-            className={barBtn}
-            onClick={() => changeFont(FONT_STEP)}
-            disabled={fontSize >= FONT_MAX}
-            aria-label="Larger text"
-          >
-            A+
+          <button type="button" className={barBtn} onClick={() => handleStep(1)} disabled={queue.length === 0} aria-label="Next song">
+            ›
           </button>
         </div>
       </div>

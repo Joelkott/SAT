@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import ViewerMode from '@/components/viewer/ViewerMode';
 import ControllerMode from '@/components/viewer/ControllerMode';
+import SettingsSheet from '@/components/viewer/SettingsSheet';
+import { SlidersIcon } from '@/components/icons';
 import { getRole, isGuest, Role } from '@/lib/role';
 import { PAIR_KEY } from '@/lib/remote';
 import { useWakeLock } from '@/lib/useWakeLock';
@@ -10,11 +12,20 @@ import { useWakeLock } from '@/lib/useWakeLock';
 type Mode = 'viewer' | 'controller';
 
 const MODE_KEY = 'sat-viewer-mode';
+const FONT_KEY = 'sat-viewer-font';
+const FONT_DEFAULT = 22;
+const FONT_MIN = 14;
+const FONT_MAX = 40;
+const FONT_STEP = 2;
+
+const clampFont = (n: number) => Math.min(FONT_MAX, Math.max(FONT_MIN, n));
 
 export default function ViewerPage() {
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState<Role>('');
   const [mode, setMode] = useState<Mode>('viewer');
+  const [showSettings, setShowSettings] = useState(false);
+  const [fontSize, setFontSize] = useState(FONT_DEFAULT);
   const { supported: wakeLockSupported } = useWakeLock(true);
 
   // Auth guard (return here after sign-in) + guest rule: viewer only, no pair session.
@@ -31,8 +42,18 @@ export default function ViewerPage() {
       const stored = localStorage.getItem(MODE_KEY);
       setMode(stored === 'controller' ? 'controller' : 'viewer');
     }
+    const storedFont = Number(localStorage.getItem(FONT_KEY));
+    if (storedFont) setFontSize(clampFont(storedFont));
     setAuthed(true);
   }, []);
+
+  const handleFont = (dir: number) => {
+    setFontSize((f) => {
+      const next = clampFont(f + dir * FONT_STEP);
+      try { localStorage.setItem(FONT_KEY, String(next)); } catch {}
+      return next;
+    });
+  };
 
   const guest = role === 'guest';
 
@@ -53,47 +74,51 @@ export default function ViewerPage() {
     return <div className="min-h-[100dvh] bg-black" />;
   }
 
-  const segBtn = (active: boolean) =>
-    `px-3 h-8 rounded-md text-sm font-medium cursor-pointer ${
-      active ? 'bg-accent-deep text-on-accent' : 'text-ink-dim hover:text-ink'
-    }`;
+  const settingsButton = (
+    <button
+      type="button"
+      onClick={() => setShowSettings(true)}
+      aria-label="Settings"
+      className="shrink-0 w-10 h-10 -mr-2 flex items-center justify-center rounded-lg text-ink-dim hover:text-ink cursor-pointer"
+    >
+      <SlidersIcon className="w-5 h-5" />
+    </button>
+  );
 
   return (
     <div
       className="min-h-[100dvh] bg-black text-ink overflow-x-clip"
       style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <div
-        className="sticky z-30 h-12 px-3 flex items-center justify-between gap-2 bg-black/95 border-b border-edge"
-        style={{ top: 'env(safe-area-inset-top)' }}
-      >
-        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-surface-sunken border border-edge">
-          <button type="button" className={segBtn(mode === 'viewer' || guest)} onClick={() => handleMode('viewer')}>
-            Viewer
-          </button>
-          {!guest && (
-            <button type="button" className={segBtn(mode === 'controller')} onClick={() => handleMode('controller')}>
-              Controller
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-2 min-w-0">
-          {role && (
-            <span className="px-2 py-0.5 rounded-full text-xs bg-surface-raised border border-edge text-ink-dim truncate">
-              {guest ? 'View only' : role}
-            </span>
-          )}
-          <button type="button" onClick={handleSignOut} className="text-xs text-ink-mute hover:text-ink cursor-pointer">
-            Sign out
-          </button>
-        </div>
-      </div>
-
       {mode === 'controller' && !guest ? (
-        <ControllerMode />
+        <>
+          <div
+            className="sticky z-30 h-11 px-4 flex items-center justify-between bg-black/95 border-b border-edge"
+            style={{ top: 'env(safe-area-inset-top)' }}
+          >
+            <span className="font-semibold">Controller</span>
+            {settingsButton}
+          </div>
+          <ControllerMode />
+        </>
       ) : (
-        <ViewerMode readOnly={guest} wakeLockSupported={wakeLockSupported} />
+        <ViewerMode readOnly={guest} fontSize={fontSize} settingsButton={settingsButton} />
       )}
+
+      <SettingsSheet
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        mode={guest ? 'viewer' : mode}
+        onMode={(m) => { handleMode(m); setShowSettings(false); }}
+        guest={guest}
+        role={role}
+        fontSize={fontSize}
+        fontMin={FONT_MIN}
+        fontMax={FONT_MAX}
+        onFont={handleFont}
+        wakeLockSupported={wakeLockSupported}
+        onSignOut={handleSignOut}
+      />
     </div>
   );
 }
