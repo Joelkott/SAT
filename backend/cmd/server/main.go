@@ -221,6 +221,11 @@ func main() {
 		AllowOrigins: allowedOrigins,
 		AllowHeaders: "Origin, Content-Type, Accept, X-API-Key, Authorization, X-Pair-Token",
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
+		// The frontend (:3000) calls the API (:8080) cross-origin, and every
+		// request carries Authorization, so without this the browser sends an
+		// OPTIONS preflight before EVERY call — doubling round trips for the
+		// phone remote and its control-window relay. 600s is WebKit's cap.
+		MaxAge: 600,
 	}))
 
 	// Auth: everything behind login except health/login and key-authed routes.

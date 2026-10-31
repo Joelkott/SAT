@@ -420,17 +420,17 @@ function SongsPanel({ onSongPingChange }: SongsPanelProps, ref: ForwardedRef<Son
       });
     }
 
-    // Sync with ProPresenter if enabled and connected (never for guest)
+    // Sync with ProPresenter if enabled and connected (never for guest).
+    // Not awaited: the display has already changed, and a phone remote's
+    // command is acked when this returns — it must not wait on ProPresenter.
     if (!isGuest() && ppSyncEnabled && ppStatus?.connected) {
       setPpSyncing(true);
-      try {
-        await propresenterApi.sendToQueue(song.id, song.title);
-      } catch (err) {
-        console.error('Failed to sync with ProPresenter:', err);
-        setActionError('Sent to the display, but ProPresenter sync failed.');
-      } finally {
-        setPpSyncing(false);
-      }
+      propresenterApi.sendToQueue(song.id, song.title)
+        .catch((err) => {
+          console.error('Failed to sync with ProPresenter:', err);
+          setActionError('Sent to the display, but ProPresenter sync failed.');
+        })
+        .finally(() => setPpSyncing(false));
     }
   }, [recordOpen, zoomLevel, ppSyncEnabled, ppStatus?.connected]);
 
