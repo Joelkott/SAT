@@ -20,6 +20,17 @@ type Handler struct {
 	backupManager *backup.Manager
 	propresenter  *propresenter.Client
 	skipTypesense bool
+	onQueueChange func()
+}
+
+// SetQueueChangeHook registers a callback run after every successful queue
+// write, so other devices (phones, other control windows) refresh their queue.
+func (h *Handler) SetQueueChangeHook(fn func()) { h.onQueueChange = fn }
+
+func (h *Handler) notifyQueueChange() {
+	if h.onQueueChange != nil {
+		h.onQueueChange()
+	}
 }
 
 func New(db *database.DB, ts *typesense.Client, backupManager *backup.Manager, pp *propresenter.Client, skipTypesense bool) *Handler {
@@ -997,6 +1008,7 @@ func (h *Handler) AddToQueue(c *fiber.Ctx) error {
 		}()
 	}
 
+	h.notifyQueueChange()
 	return c.Status(201).JSON(item)
 }
 
@@ -1021,6 +1033,7 @@ func (h *Handler) RemoveFromQueue(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to remove item from queue"})
 	}
 
+	h.notifyQueueChange()
 	return c.JSON(fiber.Map{"message": "Item removed from queue successfully"})
 }
 
@@ -1040,6 +1053,7 @@ func (h *Handler) RemoveFromQueueBySong(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to remove song from queue"})
 	}
 
+	h.notifyQueueChange()
 	return c.JSON(fiber.Map{"message": "Song removed from queue successfully"})
 }
 
@@ -1060,6 +1074,7 @@ func (h *Handler) ReorderQueue(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to reorder queue"})
 	}
 
+	h.notifyQueueChange()
 	return c.JSON(fiber.Map{"message": "Queue reordered successfully"})
 }
 
@@ -1071,5 +1086,6 @@ func (h *Handler) ClearQueue(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to clear queue"})
 	}
 
+	h.notifyQueueChange()
 	return c.JSON(fiber.Map{"message": "Queue cleared successfully"})
 }

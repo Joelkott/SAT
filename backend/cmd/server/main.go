@@ -19,6 +19,7 @@ import (
 	"github.com/yourusername/audience-stage-teleprompter/internal/database"
 	"github.com/yourusername/audience-stage-teleprompter/internal/handlers"
 	"github.com/yourusername/audience-stage-teleprompter/internal/propresenter"
+	"github.com/yourusername/audience-stage-teleprompter/internal/remote"
 	"github.com/yourusername/audience-stage-teleprompter/internal/typesense"
 )
 
@@ -218,13 +219,24 @@ func main() {
 
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: allowedOrigins,
-		AllowHeaders: "Origin, Content-Type, Accept, X-API-Key, Authorization",
+		AllowHeaders: "Origin, Content-Type, Accept, X-API-Key, Authorization, X-Pair-Token",
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
 
 	// Auth: everything behind login except health/login and key-authed routes.
 	authSvc := auth.New(db.DB)
 	authSvc.Bootstrap()
+
+	// Phone viewer + pair-code remote control (phase 4). Pair sessions persist
+	// in Postgres so phones stay paired across a backend restart.
+	pairStore := remote.NewPGStore(db.DB)
+	if err := pairStore.Ensure(); err != nil {
+		log.Printf("⚠️  could not ensure remote_pairs table: %v", err)
+	}
+	remoteHub := remote.NewHub(pairStore)
+	remoteHub.Start()
+	h.SetQueueChangeHook(remoteHub.BumpQueueVersion)
+	remoteH := remote.NewHandler(remoteHub)
 	app.Use(authSvc.Middleware())
 
 	// Routes
@@ -261,6 +273,10 @@ func main() {
 	liveGroup.Get("/wall-presets", h.ListWallPresets)
 	liveGroup.Post("/wall-presets", h.SaveWallPreset)
 	liveGroup.Delete("/wall-presets/:id", h.DeleteWallPreset)
+
+	// Phone viewer live state + pair-code remote control. /api/remote/* and
+	// POST /api/live/song are team-only; GET /api/live/state is open to guests.
+	remote.Register(api, remoteH, auth.RequireNonGuest)
 
 	// Site-wide display preferences (line spacing etc.) — any signed-in role
 	api.Get("/display-config", h.GetDisplayConfig)
