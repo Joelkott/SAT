@@ -24,6 +24,8 @@ export interface CommandResult { status: CommandStatus; message?: string }
 export interface LiveSongInfo { id: string; title: string; language: string }
 export interface LiveSongState { version: number; song: LiveSongInfo | null; cleared: boolean; source: { role: string; username: string } | null; updated_at: number; queue_version: number }
 export interface PanelResult { ok: boolean; message?: string }
+// Empty object ({}) when there is no fresh ping for this account.
+export interface SongPing { id?: string; song_id?: string; title?: string; from_role?: string; from_user?: string; created_at?: number }
 
 // ===== Id helpers =====
 
@@ -176,4 +178,11 @@ export const liveSongApi = {
     });
     return response.data;
   },
+};
+
+// Phone viewer -> other accounts' control windows: "look at this song".
+export const songPingApi = {
+  send: async (songId: string, title: string): Promise<SongPing> =>
+    (await api.post<SongPing>('/live/song-ping', { song_id: songId, title })).data,
+  latest: async (): Promise<SongPing> => (await api.get<SongPing>('/live/song-ping')).data,
 };

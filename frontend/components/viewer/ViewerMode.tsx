@@ -2,7 +2,8 @@
 
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { queueApi, songsApi, QueueItem, Song } from '@/lib/api';
-import { liveSongApi, LiveSongState } from '@/lib/remote';
+import { liveSongApi, LiveSongState, songPingApi, httpStatus } from '@/lib/remote';
+import { BellIcon, CheckIcon } from '@/components/icons';
 import { LyricBlocks, useLyricSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
 import QueueSheet from '@/components/viewer/QueueSheet';
 import SearchSheet from '@/components/viewer/SearchSheet';
@@ -26,6 +27,8 @@ export default function ViewerMode({ readOnly, fontSize, settingsButton }: Viewe
   const [showQueue, setShowQueue] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [notifyState, setNotifyState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [notifyMsg, setNotifyMsg] = useState('');
   const songCacheRef = useRef<Map<string, Song>>(new Map());
   const spacing = useLyricSpacing();
 
@@ -145,6 +148,26 @@ export default function ViewerMode({ readOnly, fontSize, settingsButton }: Viewe
 
   const handleBackToLive = () => setBrowse(null);
 
+  // ===== Notify: point other accounts' control windows at the shown song =====
+  const handleNotify = async () => {
+    if (readOnly || !shown || notifyState === 'sending') return;
+    setNotifyState('sending');
+    try {
+      await songPingApi.send(shown.id, shown.title);
+      setNotifyState('sent');
+    } catch (err) {
+      console.error('Error sending song ping:', err);
+      setNotifyMsg(httpStatus(err) === 429 ? 'Wait a moment' : "Couldn't notify");
+      setNotifyState('error');
+    }
+  };
+
+  useEffect(() => {
+    if (notifyState !== 'sent' && notifyState !== 'error') return;
+    const t = setTimeout(() => setNotifyState('idle'), 2000);
+    return () => clearTimeout(t);
+  }, [notifyState]);
+
   const livePos = liveId ? queue.findIndex((i) => i.song_id === liveId) : -1;
   const hasLive = !!liveId;
   const indic = INDIC_LANGUAGES.includes((shown?.language || '').toLowerCase());
@@ -182,11 +205,26 @@ export default function ViewerMode({ readOnly, fontSize, settingsButton }: Viewe
             {livePos + 1}/{queue.length}
           </span>
         ) : null}
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={handleNotify}
+            disabled={!shown || notifyState === 'sending'}
+            className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center cursor-pointer active:bg-surface-hover disabled:opacity-40"
+            aria-label={notifyState === 'sent' ? 'Sent' : 'Notify others about this song'}
+            title="Notify others about this song"
+          >
+            {notifyState === 'sent' ? <CheckIcon className="w-4 h-4 text-ok" /> : <BellIcon className="w-4 h-4" />}
+          </button>
+        )}
         {settingsButton}
       </div>
 
       {reconnecting && (
         <div className="bg-warn/20 text-warn text-xs px-4 py-1 text-center">Reconnecting…</div>
+      )}
+      {notifyState === 'error' && (
+        <div className="bg-danger/10 text-danger text-xs px-4 py-1 text-center" role="status">{notifyMsg}</div>
       )}
       {loadError && <div className="bg-danger/10 text-danger text-xs px-4 py-1 text-center">{loadError}</div>}
 
