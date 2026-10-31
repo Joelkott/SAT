@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
   bibleApi,
   liveApi,
@@ -53,7 +53,22 @@ type PendingSend = {
   chapterId: string;
   selKey: string;
   bibles?: string[];
+  // Remote (phone) caller waiting on this send: told whether it really went out.
+  settle?: (ok: boolean, message?: string) => void;
 };
+
+type SendOutcome = { ok: boolean; message?: string };
+
+// Imperative API used by the paired-phone remote. Every send goes through the
+// same pending-send queue as the operator's own actions.
+export interface BiblePanelHandle {
+  lookupAndSend(reference: string, target: 'auto' | 'wall' | 'display'): Promise<SendOutcome>;
+  step(dir: 1 | -1, send: boolean): Promise<SendOutcome>;
+  clear(): Promise<SendOutcome>;
+}
+
+// Longest a remote caller waits for a queued send to settle.
+const SETTLE_CAP_MS = 4000;
 
 const selKey = (s: VerseSelection | null) => (s ? `${s.start}-${s.end}` : 'all');
 
@@ -88,7 +103,7 @@ function isActivatableControl(target: EventTarget | null): boolean {
   return !!el.closest('button, a, [role="button"]') && !el.closest('[data-enter-sends]');
 }
 
-export default function BiblePanel() {
+function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
   // Available translations + the ones currently shown as columns (max 4).
   const [translations, setTranslations] = useState<BibleTranslation[]>([]);
   const [selectedBibleIds, setSelectedBibleIds] = useState<string[]>([]);
@@ -444,7 +459,7 @@ export default function BiblePanel() {
       const matchedChapter = chaptersData.find((c) => c.number === chapterNum);
       if (!matchedChapter) {
         setError('Reference not found. Try a format like John 3:16 or Gen 1:1-5.');
-        if (pendingSendRef.current?.gen === gen) pendingSendRef.current = null;
+        if (pendingSendRef.current?.gen === gen) dropPending('Reference not found');
         return null;
       }
       setChapters(chaptersData);
@@ -459,7 +474,7 @@ export default function BiblePanel() {
       if (gen !== navGenRef.current) return null;
       console.error('Error searching reference:', err);
       setError('Reference not found. Try a format like John 3:16 or Gen 1:1-5.');
-      if (pendingSendRef.current?.gen === gen) pendingSendRef.current = null;
+      if (pendingSendRef.current?.gen === gen) dropPending('Reference not found');
       return null;
     } finally {
       if (searchGenRef.current === gen) searchGenRef.current = null;
@@ -833,6 +848,14 @@ export default function BiblePanel() {
   const pendingSendRef = useRef<PendingSend | null>(null);
   // Re-runs the fire effect when a pending send is queued asynchronously.
   const [pendingTick, setPendingTick] = useState(0);
+  // Replace the queued send; anything replaced or dropped tells its remote
+  // caller it did not happen.
+  const setPending = (p: PendingSend | null, reason = 'Superseded by another navigation') => {
+    const old = pendingSendRef.current;
+    pendingSendRef.current = p;
+    if (old && old !== p) old.settle?.(false, reason);
+  };
+  const dropPending = (reason: string) => setPending(null, reason);
   // Marks the next wall send as mirror-triggered (suppresses re-publishing).
   const mirrorSendRef = useRef(false);
   // What this screen is currently showing, for the same-verse guard below.
@@ -861,17 +884,17 @@ export default function BiblePanel() {
         );
       }
     }
-    pendingSendRef.current = null;
+    dropPending('Superseded by another navigation');
     const target = await handleReferenceSearch(reference);
     // Failed or superseded search: the error (if any) is already shown.
     if (!target) return;
-    pendingSendRef.current = {
+    setPending({
       kind: 'mirror',
       gen: target.gen,
       chapterId: target.chapterId,
       selKey: target.selKey,
       bibles: mirrored,
-    };
+    });
     setPendingTick((t) => t + 1);
   }, [translations, handleReferenceSearch]);
 
@@ -1018,25 +1041,25 @@ export default function BiblePanel() {
     // accept wherever it lands.
     const stepInFlight =
       !!pendingVerseRef.current || !!pendingChapterRef.current || isSearchInFlight();
-    pendingSendRef.current = {
+    setPending({
       kind,
       gen: navGenRef.current,
       chapterId: stepInFlight ? '*' : selectedChapter.id,
       selKey: stepInFlight ? '*' : selKey(selection),
-    };
+    });
   }, [selectedChapter, selection]);
 
-  const handleSendToWall = useCallback(async () => {
-    if (isGuest() || !selectedChapter) return;
+  const handleSendToWall = useCallback(async (): Promise<SendOutcome> => {
+    if (isGuest() || !selectedChapter) return { ok: false, message: 'Nothing to send' };
     if (!chapterReady || isSearchInFlight()) {
       queuePendingSend('wall');
-      return;
+      return { ok: true, message: 'Queued' };
     }
     const columns = buildScriptureColumns();
     if (columns.length === 0) {
       mirrorSendRef.current = false;
       setError('Nothing to send — the selected passage has no text in the chosen translations.');
-      return;
+      return { ok: false, message: 'Nothing to send — no text in the chosen translations' };
     }
     // A wall send triggered by mirroring worship must not re-publish a media
     // suggestion — that would echo worship's own verse back to them.
@@ -1052,30 +1075,33 @@ export default function BiblePanel() {
         liveApi.setSuggestion(columns[0].reference, 'media', undefined, currentPassage ?? undefined).catch(() => {});
       }
       setWallState('live');
+      return { ok: true, message: columns[0]?.reference };
     } catch (err) {
       console.error('Error sending scripture to wall:', err);
       setWallState('idle');
       setError('Could not send to the wall output. Check the backend connection.');
+      return { ok: false, message: 'Could not send to the wall' };
     }
   }, [selectedChapter, chapterReady, buildScriptureColumns, role, queuePendingSend, currentPassage, selectedBibleIds]);
 
   // Send the current selection to the same-machine /display window. When
   // worship takes a verse live, publish it so the media machine can mirror.
-  const handleSendToDisplay = useCallback(() => {
-    if (isGuest() || !selectedChapter) return;
+  const handleSendToDisplay = useCallback((): SendOutcome => {
+    if (isGuest() || !selectedChapter) return { ok: false, message: 'Nothing to send' };
     if (!chapterReady || isSearchInFlight()) {
       queuePendingSend('display');
-      return;
+      return { ok: true, message: 'Queued' };
     }
     const columns = buildScriptureColumns();
     if (columns.length === 0) {
       setError('Nothing to send — the selected passage has no text in the chosen translations.');
-      return;
+      return { ok: false, message: 'Nothing to send — no text in the chosen translations' };
     }
     displayChannelRef.current?.postMessage({ type: 'scripture', columns });
     if (role === 'worship' && columns[0]) {
       liveApi.setSuggestion(columns[0].reference, 'worship', selectedBibleIds, currentPassage ?? undefined).catch(() => {});
     }
+    return { ok: true, message: columns[0]?.reference };
   }, [selectedChapter, chapterReady, buildScriptureColumns, role, selectedBibleIds, queuePendingSend, currentPassage]);
 
   // Enter sends the current selection to the wall/display (role-appropriate).
@@ -1111,21 +1137,21 @@ export default function BiblePanel() {
     const p = pendingSendRef.current;
     if (!p) return;
     if (p.gen !== navGenRef.current) {
-      pendingSendRef.current = null;
+      dropPending('The operator moved on');
       return;
     }
     // A cross-boundary arrow step is still landing (new chapter/verse not
     // selected yet) — firing now would send the full chapter.
     if (pendingVerseRef.current || pendingChapterRef.current || isSearchInFlight()) return;
     if (!selectedChapter) {
-      pendingSendRef.current = null;
+      dropPending('The operator moved on');
       return;
     }
     const chapterOk = p.chapterId === '*' || p.chapterId === selectedChapter.id;
     const selOk = p.selKey === '*' || p.selKey === selKey(selection);
     if (!chapterOk || !selOk) {
       // Settled somewhere else: the operator moved on.
-      pendingSendRef.current = null;
+      dropPending('The operator moved on');
       return;
     }
     if (!chapterReady) return;
@@ -1135,28 +1161,31 @@ export default function BiblePanel() {
     ) {
       return;
     }
-    pendingSendRef.current = null;
+    pendingSendRef.current = null; // firing now — settle with the real outcome
     if (p.kind === 'display') {
-      handleSendToDisplay();
+      const r = handleSendToDisplay();
+      p.settle?.(r.ok, r.message);
     } else {
       mirrorSendRef.current = p.kind === 'mirror';
-      handleSendToWall();
+      handleSendToWall().then((r) => p.settle?.(r.ok, r.message));
     }
   }, [chapterReady, selectedChapter, selection, selectedBibleIds, pendingTick, handleSendToWall, handleSendToDisplay]);
 
-  const handleClearWall = useCallback(async () => {
-    if (isGuest()) return;
+  const handleClearWall = useCallback(async (): Promise<SendOutcome> => {
+    if (isGuest()) return { ok: false, message: 'View-only account' };
     // A queued send must not put text back up after the operator cleared.
-    pendingSendRef.current = null;
+    dropPending('Cleared');
     lastWallKeyRef.current = null;
     displayChannelRef.current?.postMessage({ type: 'scripture-clear' });
     try {
       await liveApi.clearScripture();
       setWallState('idle');
+      return { ok: true, message: 'Cleared' };
     } catch (err) {
       console.error('Error clearing wall:', err);
       // Leave wallState alone: the wall may still be showing text.
       setError('Could not clear the wall output. Check the backend connection.');
+      return { ok: false, message: 'Could not clear the wall' };
     }
   }, []);
 
@@ -1185,51 +1214,131 @@ export default function BiblePanel() {
     setSelection({ start: num, end: num });
   }, [verseNumbers]);
 
-  // Arrow keys step verses, flowing across chapter and book boundaries.
-  useEffect(() => {
-    const step = (dir: 1 | -1) => {
-      if (!selection || selection.start !== selection.end) return;
-      const idx = verseNumbers.indexOf(String(selection.start));
-      if (idx === -1) return;
-      const next = idx + dir;
-      if (next >= 0 && next < verseNumbers.length) {
-        const n = Number(verseNumbers[next]);
-        navGenRef.current++;
-        setSelection({ start: n, end: n });
-        return;
-      }
-      // Chapter boundary
-      if (!selectedChapter) return;
-      const cIdx = chapters.findIndex((c) => c.id === selectedChapter.id);
-      const nextChapter = chapters[cIdx + dir];
-      if (nextChapter) {
-        navGenRef.current++;
-        pendingVerseRef.current = dir === 1 ? 'first' : 'last';
-        setSelection(null);
-        setSelectedChapter(nextChapter);
-        return;
-      }
-      // Book boundary
-      if (!selectedBook) return;
-      const bIdx = books.findIndex((b) => b.id === selectedBook.id);
-      const nextBook = books[bIdx + dir];
-      if (!nextBook) return;
+  // Step one verse, flowing across chapter and book boundaries. Reassigned
+  // every render so it always sees current state; returns whether it moved.
+  // Shared by the arrow keys and the phone remote.
+  const stepRef = useRef<(dir: 1 | -1) => boolean>(() => false);
+  stepRef.current = (dir) => {
+    if (!selection || selection.start !== selection.end) return false;
+    const idx = verseNumbers.indexOf(String(selection.start));
+    if (idx === -1) return false;
+    const next = idx + dir;
+    if (next >= 0 && next < verseNumbers.length) {
+      const n = Number(verseNumbers[next]);
       navGenRef.current++;
-      pendingChapterRef.current = dir === 1 ? 'first' : 'last';
+      setSelection({ start: n, end: n });
+      return true;
+    }
+    // Chapter boundary
+    if (!selectedChapter) return false;
+    const cIdx = chapters.findIndex((c) => c.id === selectedChapter.id);
+    const nextChapter = chapters[cIdx + dir];
+    if (nextChapter) {
+      navGenRef.current++;
       pendingVerseRef.current = dir === 1 ? 'first' : 'last';
       setSelection(null);
-      setSelectedChapter(null);
-      setSelectedBook(nextBook);
-    };
+      setSelectedChapter(nextChapter);
+      return true;
+    }
+    // Book boundary
+    if (!selectedBook) return false;
+    const bIdx = books.findIndex((b) => b.id === selectedBook.id);
+    const nextBook = books[bIdx + dir];
+    if (!nextBook) return false;
+    navGenRef.current++;
+    pendingChapterRef.current = dir === 1 ? 'first' : 'last';
+    pendingVerseRef.current = dir === 1 ? 'first' : 'last';
+    setSelection(null);
+    setSelectedChapter(null);
+    setSelectedBook(nextBook);
+    return true;
+  };
+
+  // Arrow keys step verses.
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); step(1); }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); stepRef.current(1); }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); stepRef.current(-1); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selection, verseNumbers, chapters, selectedChapter, books, selectedBook]);
+  }, []);
+
+  // Remote (paired phone) commands -------------------------------------------
+  // Map a requested target onto this window's role: wall = media/admin,
+  // display = worship/admin, auto = what Enter would do. A string that isn't
+  // 'wall'/'display' is the refusal reason.
+  const resolveTarget = (t: 'auto' | 'wall' | 'display'): 'wall' | 'display' | string => {
+    if (role === 'guest') return 'View-only account';
+    if (t === 'auto') return role === 'worship' ? 'display' : 'wall'; // same choice Enter makes
+    if (t === 'wall' && role === 'worship') return 'This window drives the display, not the wall';
+    if (t === 'display' && role === 'media') return 'This window drives the wall, not the display';
+    return t;
+  };
+
+  // Resolves once the queued send really fires (or is dropped), capped at
+  // SETTLE_CAP_MS so the phone isn't left hanging on a slow chapter load.
+  const awaitSettle = (make: (settle: (ok: boolean, m?: string) => void) => void) =>
+    new Promise<SendOutcome>((resolve) => {
+      let done = false;
+      const finish = (ok: boolean, message?: string) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve({ ok, message });
+      };
+      const timer = setTimeout(() => {
+        // Still loading: drop it so it can't fire later after we told the phone it failed.
+        if (!done && pendingSendRef.current?.settle === finish) dropPending('Timed out');
+        finish(false, 'Still loading — not sent');
+      }, SETTLE_CAP_MS);
+      make(finish);
+    });
+
+  const handleRef = useRef<BiblePanelHandle>({
+    lookupAndSend: async () => ({ ok: false }),
+    step: async () => ({ ok: false }),
+    clear: async () => ({ ok: false }),
+  });
+  handleRef.current = {
+    lookupAndSend: async (reference, target) => {
+      const k = resolveTarget(target);
+      if (k !== 'wall' && k !== 'display') return { ok: false, message: k };
+      dropPending('Superseded by another navigation');
+      const t = await handleReferenceSearch(reference);
+      if (!t) return { ok: false, message: 'Reference not found' };
+      // Never send directly here: the fire effect waits for the new chapter's
+      // own text, so the old/whole chapter can't flash up.
+      return awaitSettle((settle) => {
+        setPending({ kind: k, gen: t.gen, chapterId: t.chapterId, selKey: t.selKey, settle });
+        setPendingTick((n) => n + 1);
+      });
+    },
+    step: async (dir, send) => {
+      let k: string = 'wall';
+      if (send) {
+        k = resolveTarget('auto');
+        if (k !== 'wall' && k !== 'display') return { ok: false, message: k };
+      }
+      const moved = stepRef.current(dir);
+      if (!moved) return { ok: false, message: 'Select a single verse first (or end of the Bible)' };
+      if (!send) return { ok: true, message: 'Moved' };
+      const kind = k as 'wall' | 'display';
+      // Queue synchronously after the step: accept wherever it lands.
+      return awaitSettle((settle) => {
+        setPending({ kind, gen: navGenRef.current, chapterId: '*', selKey: '*', settle });
+        setPendingTick((n) => n + 1);
+      });
+    },
+    clear: () => handleClearWall(),
+  };
+  useImperativeHandle(ref, () => ({
+    lookupAndSend: (r, t) => handleRef.current.lookupAndSend(r, t),
+    step: (d, s) => handleRef.current.step(d, s),
+    clear: () => handleRef.current.clear(),
+  }), []);
 
   return (
     <div className="px-4 sm:px-6 py-5 space-y-4">
@@ -1881,3 +1990,5 @@ export default function BiblePanel() {
     </div>
   );
 }
+
+export default forwardRef<BiblePanelHandle, {}>(BiblePanel);
