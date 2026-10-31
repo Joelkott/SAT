@@ -11,7 +11,7 @@ import {
   RemoteCapabilities,
   RemoteCommandType,
 } from '@/lib/remote';
-import { BellIcon, CheckIcon } from '@/components/icons';
+import { BellIcon } from '@/components/icons';
 
 interface ControllerPadProps {
   token: string;
@@ -72,7 +72,9 @@ export default function ControllerPad({
   const [results, setResults] = useState<Song[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [notified, setNotified] = useState<string | null>(null);
+  // Tapping a song title asks before notifying the other teams.
+  const [confirmSong, setConfirmSong] = useState<{ id: string; title: string } | null>(null);
+  const [notifying, setNotifying] = useState(false);
 
   // Bible
   const [reference, setReference] = useState('');
@@ -145,14 +147,18 @@ export default function ControllerPad({
 
   // Notify the other accounts about a song (not a remote command — it goes
   // to every other control window as a banner).
-  const handleNotify = async (song: { id: string; title: string }) => {
+  const handleNotify = async () => {
+    if (!confirmSong || notifying) return;
+    const song = confirmSong;
+    setNotifying(true);
     try {
       await songPingApi.send(song.id, song.title);
-      setNotified(song.id);
-      setTimeout(() => setNotified((n) => (n === song.id ? null : n)), 2000);
       showFeedback({ ok: true, text: `✓ Notified others: ${song.title}` });
+      setConfirmSong(null);
     } catch (err) {
       showFeedback({ ok: false, text: httpStatus(err) === 429 ? '✗ Wait a moment before notifying again' : "✗ Couldn't notify" });
+    } finally {
+      setNotifying(false);
     }
   };
 
@@ -212,15 +218,16 @@ export default function ControllerPad({
   const activeTab: Tab = tab === 'bible' && showBible ? 'bible' : 'songs';
   const songsAvailable = capabilities.songs;
 
-  const notifyButton = (song: { id: string; title: string }) => (
+  // A song title that opens the notify confirmation.
+  const titleButton = (song: { id: string; title: string }, sub?: string) => (
     <button
       type="button"
-      className={`${rowBtn} text-ink-dim`}
-      onClick={() => handleNotify(song)}
-      aria-label={`Notify others about ${song.title}`}
-      title="Notify the other teams"
+      onClick={() => setConfirmSong(song)}
+      className="flex-1 min-w-0 min-h-12 py-1 pl-1 text-left cursor-pointer active:bg-surface-hover rounded-md"
+      aria-label={`Notify the other teams about ${song.title}`}
     >
-      {notified === song.id ? <CheckIcon className="w-4 h-4 text-ok" /> : <BellIcon className="w-4 h-4" />}
+      <span className="block truncate">{song.title}</span>
+      {sub && <span className="block text-xs text-ink-mute capitalize">{sub}</span>}
     </button>
   );
 
@@ -386,6 +393,7 @@ export default function ControllerPad({
               </button>
             </div>
 
+            <p className="px-4 pt-2 text-xs text-ink-mute">Tap a song title to notify the other teams.</p>
             <div className="flex-1 overflow-y-auto px-3">
               {songTab === 'queue' ? (
                 <>
@@ -402,11 +410,10 @@ export default function ControllerPad({
                         return (
                           <li key={item.id} className="flex items-center gap-1">
                             <span className="w-6 text-right text-sm text-ink-mute tabular-nums">{i + 1}</span>
-                            <span className="flex-1 min-w-0 truncate pl-1">{title}</span>
+                            {titleButton({ id: item.song_id, title })}
                             {isLive && (
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-live text-white">LIVE</span>
                             )}
-                            {notifyButton({ id: item.song_id, title })}
                             <button type="button" className={`${rowBtn} text-accent-hover`} disabled={isBusy(liveKey)}
                               onClick={() => send('song.live', { song_id: item.song_id }, liveKey)}>
                               Live
@@ -442,11 +449,7 @@ export default function ControllerPad({
                       const addKey = `queue.add:${song.id}`;
                       return (
                         <li key={song.id} className="flex items-center gap-1">
-                          <div className="flex-1 min-w-0 py-1">
-                            <div className="truncate">{song.title}</div>
-                            <div className="text-xs text-ink-mute capitalize">{song.language}</div>
-                          </div>
-                          {notifyButton({ id: song.id, title: song.title })}
+                          {titleButton({ id: song.id, title: song.title }, song.language)}
                           <button type="button" className={`${rowBtn} text-accent-hover`} disabled={isBusy(liveKey)}
                             onClick={() => send('song.live', { song_id: song.id }, liveKey)}>
                             Live
@@ -461,6 +464,47 @@ export default function ControllerPad({
                   </ul>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notify confirmation (second step after tapping a title) */}
+      {confirmSong && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="notify-confirm-title">
+          <div className="absolute inset-0 bg-black/70" onClick={() => !notifying && setConfirmSong(null)} />
+          <div
+            className="relative w-full sm:max-w-sm m-0 sm:m-4 rounded-t-2xl sm:rounded-2xl bg-surface-raised border border-edge p-5 space-y-4"
+            style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+          >
+            <div className="flex items-start gap-3">
+              <span className="shrink-0 w-10 h-10 rounded-full bg-accent/15 text-accent-hover flex items-center justify-center">
+                <BellIcon className="w-5 h-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 id="notify-confirm-title" className="font-semibold">Notify the other teams?</h2>
+                <p className="mt-1 text-sm text-ink-dim break-words">
+                  Their control windows will show <span className="text-ink font-medium">{confirmSong.title}</span>.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmSong(null)}
+                disabled={notifying}
+                className="flex-1 min-h-12 rounded-xl border border-edge text-ink-dim font-semibold cursor-pointer disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleNotify}
+                disabled={notifying}
+                className="flex-1 min-h-12 rounded-xl bg-accent-deep text-on-accent font-semibold cursor-pointer disabled:opacity-40"
+              >
+                {notifying ? 'Notifying…' : 'Notify'}
+              </button>
             </div>
           </div>
         </div>
