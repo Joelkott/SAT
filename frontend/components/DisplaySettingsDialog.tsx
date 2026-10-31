@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { displayConfigApi } from '@/lib/api';
 import { XIcon } from '@/components/icons';
 
@@ -13,6 +13,11 @@ export default function DisplaySettingsDialog({ onClose }: DisplaySettingsDialog
   const [para, setPara] = useState(1.0);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState('');
+  // Slider drags POST at most every ~250ms; the latest values wait here.
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRef = useRef<{ line: number; para: number } | null>(null);
+  const inFlightRef = useRef(0);
 
   useEffect(() => {
     displayConfigApi
@@ -21,8 +26,21 @@ export default function DisplaySettingsDialog({ onClose }: DisplaySettingsDialog
         if (c.line_spacing) setLine(c.line_spacing);
         if (c.paragraph_spacing !== undefined) setPara(c.paragraph_spacing);
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.error('Error loading display settings:', err);
+        setError('Could not load display settings.');
+      })
       .finally(() => setLoaded(true));
+  }, []);
+
+  // Closing mid-drag must not lose the last value: flush it on unmount.
+  useEffect(() => () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+      const v = latestRef.current;
+      if (v) displayConfigApi.set({ line_spacing: v.line, paragraph_spacing: v.para }).catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -33,16 +51,44 @@ export default function DisplaySettingsDialog({ onClose }: DisplaySettingsDialog
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const save = (next: { line?: number; para?: number }) => {
-    const l = next.line ?? line;
-    const p = next.para ?? para;
-    setLine(l);
-    setPara(p);
+  const post = (v: { line: number; para: number }) => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    latestRef.current = null;
+    inFlightRef.current++;
     setSaving(true);
     displayConfigApi
-      .set({ line_spacing: l, paragraph_spacing: p })
-      .catch(() => {})
-      .finally(() => setSaving(false));
+      .set({ line_spacing: v.line, paragraph_spacing: v.para })
+      .then(() => setError(''))
+      .catch((err) => {
+        console.error('Error saving display settings:', err);
+        setError('Could not save display settings. Check the connection and try again.');
+      })
+      .finally(() => {
+        inFlightRef.current--;
+        if (inFlightRef.current === 0 && !timerRef.current) setSaving(false);
+      });
+  };
+
+  // UI updates immediately; immediate=false debounces the POST (sliders).
+  const save = (next: { line?: number; para?: number }, immediate = false) => {
+    const v = { line: next.line ?? line, para: next.para ?? para };
+    setLine(v.line);
+    setPara(v.para);
+    if (immediate) {
+      post(v);
+      return;
+    }
+    latestRef.current = v;
+    setSaving(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      const latest = latestRef.current;
+      if (latest) post(latest);
+    }, 250);
   };
 
   return (
@@ -111,11 +157,15 @@ export default function DisplaySettingsDialog({ onClose }: DisplaySettingsDialog
           </label>
 
           <div className="flex items-center justify-between pt-1">
-            <span className="text-xs text-ink-mute">
-              {saving ? 'Saving…' : 'Applies to every device within a few seconds'}
-            </span>
+            {error ? (
+              <span className="text-xs text-danger" role="alert">{error}</span>
+            ) : (
+              <span className="text-xs text-ink-mute">
+                {saving ? 'Saving…' : 'Applies to every device within a few seconds'}
+              </span>
+            )}
             <button
-              onClick={() => save({ line: 1.6, para: 1.0 })}
+              onClick={() => save({ line: 1.6, para: 1.0 }, true)}
               className="text-xs text-ink-mute hover:text-ink cursor-pointer transition-colors duration-150"
             >
               Reset to defaults

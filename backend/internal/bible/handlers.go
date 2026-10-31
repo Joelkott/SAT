@@ -19,6 +19,17 @@ func NewHandler(client *Client, local *LocalProvider, esv *EsvProvider, net *Net
 	return &BibleHandler{client: client, local: local, esv: esv, net: net}
 }
 
+// hiddenRemoteBibles are api.bible editions of the KJV left out of the catalog
+// so the bundled local-kjv is the only KJV operators can pick. (NKJV and MKJV
+// are distinct translations and stay.)
+var hiddenRemoteBibles = map[string]bool{
+	"de4e12af7f28f599-01": true, // engKJV (Ecumenical)
+	"de4e12af7f28f599-02": true, // engKJV (Protestant)
+	"55212e3cf5d04d49-01": true, // engKJVCPB (Cambridge Paragraph Bible)
+	"a6aee10bb058511c-01": true, // KJVAIC (with Apocrypha, American Edition)
+	"a6aee10bb058511c-02": true, // KJVA (American Edition)
+}
+
 // GetBibles returns all available Bible translations: bundled local ones first,
 // then remote api.bible translations when a key is configured.
 // GET /api/bible/bibles
@@ -36,7 +47,11 @@ func (bh *BibleHandler) GetBibles(c *fiber.Ctx) error {
 			// Non-fatal: still return the local Bibles so the tab keeps working.
 			return c.JSON(bibles)
 		}
-		bibles = append(bibles, remote...)
+		for _, b := range remote {
+			if !hiddenRemoteBibles[b.ID] {
+				bibles = append(bibles, b)
+			}
+		}
 	}
 	return c.JSON(bibles)
 }

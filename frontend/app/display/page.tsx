@@ -5,6 +5,7 @@ import { Song } from '@/lib/api';
 import SplitLyricsView from '@/components/SplitLyricsView';
 import { parseVerses } from '@/components/bible/verseUtils';
 import { useFitText } from '@/components/bible/scriptureFit';
+import Dissolve from '@/components/bible/Dissolve';
 import {
   ALIGN_KEY,
   FONT_KEY,
@@ -30,6 +31,15 @@ type DisplaySong = Pick<Song, 'id' | 'title' | 'artist' | 'display_lyrics' | 'mu
  *  the screen and picks the largest font that fits, so each language fills its
  *  space independently and as large as the screen allows. */
 function ScriptureRow({ col }: { col: ScriptureColumn }) {
+  // The row stays mounted across verses; its text dissolves between them.
+  return (
+    <Dissolve itemKey={`${col.reference}|${col.abbreviation}|${col.content}`} className="flex-1 min-h-0">
+      <ScriptureRowText col={col} />
+    </Dissolve>
+  );
+}
+
+function ScriptureRowText({ col }: { col: ScriptureColumn }) {
   const verses = useMemo(() => parseVerses(col.content), [col.content]);
   const { areaRef, textRef, fontSize } = useFitText([col.content, col.indic], {
     min: 14,
@@ -37,7 +47,7 @@ function ScriptureRow({ col }: { col: ScriptureColumn }) {
   });
 
   return (
-    <div ref={areaRef} className="fade-swap flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+    <div ref={areaRef} className="h-full w-full flex items-center justify-center overflow-hidden">
       <div ref={textRef} className="w-full text-center" style={{ fontSize }}>
         <div
           className="inline-block bg-white text-black font-bold rounded-[0.12em]"
@@ -68,6 +78,9 @@ function ScriptureRow({ col }: { col: ScriptureColumn }) {
 export default function Display() {
   const [song, setSong] = useState<DisplaySong | null>(null);
   const [scripture, setScripture] = useState<ScriptureColumn[] | null>(null);
+  // An operator Clear (Bible or Songs tab) leaves the screen black — never the
+  // previous song or the idle placeholder — until the next send.
+  const [blanked, setBlanked] = useState(false);
   const [textAlign, setTextAlign] = useState<TextAlign>(DEFAULT_ALIGN);
   const [fontFamily, setFontFamilyState] = useState(DEFAULT_FONT);
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -183,20 +196,28 @@ export default function Display() {
       if (data?.type === 'song' && data.song) {
         setSong(data.song as DisplaySong);
         setScripture(null);
+        setBlanked(false);
         try {
           localStorage.setItem('lyrics-display-current', JSON.stringify(data.song));
         } catch {}
       }
       if (data?.type === 'scripture' && Array.isArray(data.columns)) {
         setScripture(data.columns as ScriptureColumn[]);
+        setBlanked(false);
       }
+      // Bible Clear: go black. Song state/localStorage are untouched so the
+      // Songs tab is unaffected; the next song/scripture send un-blanks.
       if (data?.type === 'scripture-clear') {
         setScripture(null);
+        setBlanked(true);
       }
       if (data?.type === 'clear') {
         setSong(null);
         setScripture(null);
         localStorage.removeItem('lyrics-display-current');
+        // Songs-tab live Clear sends blank: true (black, like Bible Clear);
+        // the delete-path clear omits it and falls back to the idle screen.
+        if (data.blank === true) setBlanked(true);
       }
       if (data?.type === 'zoom' && typeof data.zoomLevel === 'number') {
         setZoomLevel(data.zoomLevel);
@@ -205,8 +226,7 @@ export default function Display() {
         setTextAlign(data.textAlign);
         localStorage.setItem(ALIGN_KEY, data.textAlign);
       }
-      // SettingsDialog has broadcast this for a while; nothing consumed it
-      // until now.
+      // Sent by lib/displayPrefs.setFontFamily (Songs quick-edit toolbar).
       if (data?.type === 'displaySettings' && typeof data.fontFamily === 'string') {
         setFontFamilyState(data.fontFamily);
         localStorage.setItem(FONT_KEY, data.fontFamily);
@@ -276,9 +296,11 @@ export default function Display() {
       {scripture && scripture.length > 0 ? (
         <div className="h-full w-full flex flex-col items-stretch p-2 gap-2">
           {scripture.slice(0, 2).map((col, i) => (
-            <ScriptureRow key={`${i}-${col.reference}`} col={col} />
+            <ScriptureRow key={i} col={col} />
           ))}
         </div>
+      ) : blanked ? (
+        <div className="h-full w-full bg-black" />
       ) : song ? (
         <SplitLyricsView lyrics={song.music_ministry_lyrics || song.display_lyrics || ''} zoomLevel={zoomLevel} language={song.language} textAlign={textAlign} songId={song.id} />
       ) : (

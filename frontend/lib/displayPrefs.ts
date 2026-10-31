@@ -1,19 +1,18 @@
 // Shared display preferences (text alignment + font family) used by the
-// control window's quick-edit toolbar, the settings dialog and the display
-// window. Everything here reuses the storage keys and BroadcastChannel message
+// control window's Songs quick-edit toolbar and the display window. Everything here reuses the storage keys and BroadcastChannel message
 // types that already exist — nothing new is invented.
 
 export type TextAlign = 'left' | 'center' | 'right';
 
 /** Read by app/display/page.tsx and SongFullScreen. */
 export const ALIGN_KEY = 'lyrics-text-align';
-/** Written today by SettingsDialog. */
+/** Written by setFontFamily (Songs quick-edit toolbar); read by the display window. */
 export const FONT_KEY = 'display-font-family';
 
 export const DEFAULT_ALIGN: TextAlign = 'center';
 export const DEFAULT_FONT = 'system-ui';
 
-/** Same list as SettingsDialog's font dropdown. */
+/** Font choices offered in the Songs quick-edit toolbar. */
 export const FONT_OPTIONS: { label: string; value: string }[] = [
   { label: 'System Default', value: 'system-ui' },
   { label: 'Arial', value: 'Arial, sans-serif' },

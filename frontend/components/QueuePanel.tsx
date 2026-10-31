@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { queueApi, QueueItem, Song } from '@/lib/api';
+import { copyText } from '@/lib/clipboard';
 import { MusicIcon, PlayIcon, XIcon, ClipboardIcon, CheckIcon } from '@/components/icons';
 import {
   DndContext,
@@ -248,24 +249,7 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
     }
     try {
       setError(null);
-      // The church LAN serves plain HTTP, where navigator.clipboard is
-      // undefined, so fall back to execCommand on an off-screen textarea.
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const el = document.createElement('textarea');
-        el.value = text;
-        el.setAttribute('readonly', '');
-        el.style.position = 'fixed';
-        el.style.left = '-9999px';
-        document.body.appendChild(el);
-        el.select();
-        try {
-          document.execCommand('copy');
-        } finally {
-          document.body.removeChild(el);
-        }
-      }
+      await copyText(text);
       setCopied(true);
       if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
       copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);

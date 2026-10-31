@@ -40,6 +40,9 @@ func New(dsn string) (*DB, error) {
 	if err := wrapped.ensureOutputConfigTable(); err != nil {
 		log.Printf("⚠️  could not ensure output_config table: %v", err)
 	}
+	if err := wrapped.ensureWallPresetsTable(); err != nil {
+		log.Printf("⚠️  could not ensure wall_presets table: %v", err)
+	}
 	if err := wrapped.ensureDisplayConfigTable(); err != nil {
 		log.Printf("⚠️  could not ensure display_config table: %v", err)
 	}
@@ -97,27 +100,140 @@ func (db *DB) ensureOutputConfigTable() error {
 		ALTER TABLE output_config ADD COLUMN IF NOT EXISTS text_scale DOUBLE PRECISION NOT NULL DEFAULT 1.0;
 		ALTER TABLE output_config ADD COLUMN IF NOT EXISTS box_w_px INT NOT NULL DEFAULT 0;
 		ALTER TABLE output_config ADD COLUMN IF NOT EXISTS box_h_px INT NOT NULL DEFAULT 0;
+		ALTER TABLE output_config ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT 'imag';
 		INSERT INTO output_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 	`)
 	return err
 }
 
 // GetOutputConfig returns the wall-output layout config (box size in px;
-// 0 = fill the panel).
-func (db *DB) GetOutputConfig() (blur, boxWpx, boxHpx int, textScale float64, updatedAt int64, err error) {
-	err = db.QueryRow(`SELECT blur, box_w_px, box_h_px, text_scale, updated_at FROM output_config WHERE id = 1`).
-		Scan(&blur, &boxWpx, &boxHpx, &textScale, &updatedAt)
+// 0 = fill the panel; layout is "imag" or "fullscreen").
+func (db *DB) GetOutputConfig() (blur, boxWpx, boxHpx int, textScale float64, layout string, updatedAt int64, err error) {
+	err = db.QueryRow(`SELECT blur, box_w_px, box_h_px, text_scale, layout, updated_at FROM output_config WHERE id = 1`).
+		Scan(&blur, &boxWpx, &boxHpx, &textScale, &layout, &updatedAt)
 	return
 }
 
-// SetOutputConfig persists the wall-output layout config.
-func (db *DB) SetOutputConfig(blur, boxWpx, boxHpx int, textScale float64, updatedAt int64) error {
+// SetOutputConfig persists the wall-output layout config (layout is the
+// preset: "imag" or "fullscreen").
+func (db *DB) SetOutputConfig(blur, boxWpx, boxHpx int, textScale float64, layout string, updatedAt int64) error {
 	_, err := db.Exec(`
-		INSERT INTO output_config (id, blur, box_w_px, box_h_px, text_scale, updated_at)
-		VALUES (1, $1, $2, $3, $4, $5)
-		ON CONFLICT (id) DO UPDATE SET blur = $1, box_w_px = $2, box_h_px = $3, text_scale = $4, updated_at = $5
-	`, blur, boxWpx, boxHpx, textScale, updatedAt)
+		INSERT INTO output_config (id, blur, box_w_px, box_h_px, text_scale, updated_at, layout)
+		VALUES (1, $1, $2, $3, $4, $5, $6)
+		ON CONFLICT (id) DO UPDATE SET blur = $1, box_w_px = $2, box_h_px = $3, text_scale = $4, updated_at = $5, layout = $6
+	`, blur, boxWpx, boxHpx, textScale, updatedAt, layout)
 	return err
+}
+
+// ensureWallPresetsTable creates the saved wall-layout presets table on boot
+// (idempotent) and seeds the two built-ins. "With IMAG" is seeded from the
+// current live output_config so the operator's tuned setup is kept. Seeds use
+// ON CONFLICT DO NOTHING so user edits to built-ins are never overwritten.
+func (db *DB) ensureWallPresetsTable() error {
+	var fresh bool
+	if err := db.QueryRow(`SELECT to_regclass('public.wall_presets') IS NULL`).Scan(&fresh); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS wall_presets (
+			id SERIAL PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			layout TEXT NOT NULL DEFAULT 'imag',
+			blur INT NOT NULL DEFAULT 14,
+			box_w_px INT NOT NULL DEFAULT 0,
+			box_h_px INT NOT NULL DEFAULT 0,
+			text_scale DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+			builtin BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+		INSERT INTO wall_presets (name, layout, blur, box_w_px, box_h_px, text_scale, builtin)
+		SELECT 'With IMAG', 'imag', blur, box_w_px, box_h_px, text_scale, TRUE
+		FROM output_config WHERE id = 1
+		ON CONFLICT (name) DO NOTHING;
+		INSERT INTO wall_presets (name, layout, blur, box_w_px, box_h_px, text_scale, builtin)
+		VALUES ('With IMAG', 'imag', 14, 0, 0, 1.0, TRUE)
+		ON CONFLICT (name) DO NOTHING;
+		INSERT INTO wall_presets (name, layout, blur, box_w_px, box_h_px, text_scale, builtin)
+		VALUES ('Fullscreen', 'fullscreen', 14, 0, 0, 1.0, TRUE)
+		ON CONFLICT (name) DO NOTHING;
+	`); err != nil {
+		return err
+	}
+	if fresh {
+		// Until presets existed, box_w_px was ignored in fullscreen (boxes were
+		// always half the wall). It now means "exact width per box", so a live
+		// config sitting in fullscreen with a stale IMAG width (e.g. 610) would
+		// suddenly shrink. Reset it to auto once, on the boot that creates the
+		// presets table.
+		if _, err := db.Exec(`UPDATE output_config SET box_w_px = 0 WHERE id = 1 AND layout = 'fullscreen'`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+const wallPresetColumns = `id, name, layout, blur, box_w_px, box_h_px, text_scale, builtin, created_at, updated_at`
+
+func scanWallPreset(row interface{ Scan(...any) error }) (models.WallPreset, error) {
+	var p models.WallPreset
+	err := row.Scan(&p.ID, &p.Name, &p.Layout, &p.Blur, &p.BoxWpx, &p.BoxHpx, &p.TextScale, &p.Builtin, &p.CreatedAt, &p.UpdatedAt)
+	return p, err
+}
+
+// ListWallPresets returns all saved wall presets, built-ins first, then by name.
+func (db *DB) ListWallPresets() ([]models.WallPreset, error) {
+	rows, err := db.Query(`SELECT ` + wallPresetColumns + ` FROM wall_presets ORDER BY builtin DESC, name ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	presets := []models.WallPreset{}
+	for rows.Next() {
+		p, err := scanWallPreset(rows)
+		if err != nil {
+			return nil, err
+		}
+		presets = append(presets, p)
+	}
+	return presets, rows.Err()
+}
+
+// UpsertWallPreset saves a preset by name, overwriting an existing one with
+// the same name. The builtin flag is never changed by an overwrite.
+func (db *DB) UpsertWallPreset(name, layout string, blur, boxWpx, boxHpx int, textScale float64) (*models.WallPreset, error) {
+	row := db.QueryRow(`
+		INSERT INTO wall_presets (name, layout, blur, box_w_px, box_h_px, text_scale, builtin)
+		VALUES ($1, $2, $3, $4, $5, $6, FALSE)
+		ON CONFLICT (name) DO UPDATE SET
+			layout = EXCLUDED.layout,
+			blur = EXCLUDED.blur,
+			box_w_px = EXCLUDED.box_w_px,
+			box_h_px = EXCLUDED.box_h_px,
+			text_scale = EXCLUDED.text_scale,
+			updated_at = NOW()
+		RETURNING `+wallPresetColumns, name, layout, blur, boxWpx, boxHpx, textScale)
+	p, err := scanWallPreset(row)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// DeleteWallPreset removes a custom preset. Built-ins are never deleted:
+// found=true, builtin=true is returned without touching the row.
+func (db *DB) DeleteWallPreset(id int) (found bool, builtin bool, err error) {
+	if err = db.QueryRow(`SELECT builtin FROM wall_presets WHERE id = $1`, id).Scan(&builtin); err != nil {
+		if err == sql.ErrNoRows {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	if builtin {
+		return true, true, nil
+	}
+	_, err = db.Exec(`DELETE FROM wall_presets WHERE id = $1 AND NOT builtin`, id)
+	return true, false, err
 }
 
 // ensureEditLogTable creates the audit table on boot (idempotent).

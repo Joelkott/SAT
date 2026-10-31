@@ -7,9 +7,10 @@ import SongList from '@/components/SongList';
 import SongForm from '@/components/SongForm';
 import SongFullScreen from '@/components/SongFullScreen';
 import QueuePanel from '@/components/QueuePanel';
-import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon } from '@/components/icons';
-import { FormattedLyrics, LyricBlocks, toggleBoldInTextarea, useLyricSpacing, INDIC_EXTRA } from '@/components/lyricsFormat';
+import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, PencilIcon, ChevronDownIcon, PlayIcon, ClipboardIcon, CheckIcon } from '@/components/icons';
+import { FormattedLyrics, LyricBlocks, toggleBoldInTextarea, useLyricSpacing, INDIC_EXTRA, stripBold } from '@/components/lyricsFormat';
 import { useScrollMemory } from '@/lib/scrollMemory';
+import { copyText } from '@/lib/clipboard';
 import {
   DEFAULT_ALIGN,
   DEFAULT_FONT,
@@ -91,19 +92,29 @@ export default function SongsPanel() {
   };
   const inlineTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [inlineSaving, setInlineSaving] = useState(false);
+  // Inline save failure: shown next to Save; the draft stays in the editor.
+  const [inlineError, setInlineError] = useState(false);
+
+  // The song being inline-edited is pinned when the editor opens. Resolving
+  // hoverSong/selectedSong again at save time wrote the draft into whichever
+  // song the user clicked mid-edit, silently rewriting that other song.
+  const [inlineEditSong, setInlineEditSong] = useState<Song | null>(null);
 
   const startInlineEdit = () => {
     const song = hoverSong || selectedSong;
     if (!song) return;
+    setInlineEditSong(song);
     setInlineDraft(song.music_ministry_lyrics || song.display_lyrics);
+    setInlineError(false);
     setInlineEdit(true);
   };
 
   const saveInlineEdit = async () => {
-    const song = hoverSong || selectedSong;
+    const song = inlineEditSong;
     if (!song) return;
     try {
       setInlineSaving(true);
+      setInlineError(false);
       await songsApi.update(song.id, { music_ministry_lyrics: inlineDraft });
       const updated = { ...song, music_ministry_lyrics: inlineDraft };
       if (hoverSong?.id === song.id) setHoverSong(updated);
@@ -111,8 +122,10 @@ export default function SongsPanel() {
       if (liveSong?.id === song.id) handleSendToLive(updated);
       await loadSongs();
       setInlineEdit(false);
+      setInlineEditSong(null);
     } catch (err) {
       console.error('Inline edit failed:', err);
+      setInlineError(true);
     } finally {
       setInlineSaving(false);
     }
@@ -301,6 +314,7 @@ export default function SongsPanel() {
       setSearchResults(results);
     } catch (error) {
       console.error('Error searching:', error);
+      setActionError('Search failed. Check the connection and try again.');
     } finally {
       setIsSearching(false);
     }
@@ -372,6 +386,7 @@ export default function SongsPanel() {
         await propresenterApi.sendToQueue(song.id, song.title);
       } catch (err) {
         console.error('Failed to sync with ProPresenter:', err);
+        setActionError('Sent to the display, but ProPresenter sync failed.');
       } finally {
         setPpSyncing(false);
       }
@@ -522,11 +537,17 @@ export default function SongsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [songs, searchResults, selectedLanguages]);
 
-  const handleCloseFullScreen = () => {
-    setSelectedSong(null);
+  // Clear the live display (black screen, like Bible Clear). The preview
+  // (selected/hover song) is left alone so the operator keeps their place.
+  const handleClearLive = () => {
+    setLiveSong(null);
     localStorage.removeItem('lyrics-display-current');
-    displayChannelRef.current?.postMessage({ type: 'clear' });
+    displayChannelRef.current?.postMessage({ type: 'clear', blank: true });
   };
+
+  // SongForm registers its dirty-checked close here so the modal X goes
+  // through the same "discard unsaved changes?" confirm.
+  const formCloseRef = useRef<(() => void) | null>(null);
 
   return (
     <>
@@ -547,7 +568,7 @@ export default function SongsPanel() {
                 {editingSong ? 'Edit Song' : 'Add New Song'}
               </h2>
               <button
-                onClick={handleFormCancel}
+                onClick={() => (formCloseRef.current ? formCloseRef.current() : handleFormCancel())}
                 aria-label="Close"
                 className="p-2 rounded-md text-ink-mute hover:text-ink hover:bg-surface-hover cursor-pointer transition-colors duration-150"
               >
@@ -559,6 +580,7 @@ export default function SongsPanel() {
               onSubmit={handleFormSubmit}
               onCancel={handleFormCancel}
               onDelete={handleDelete}
+              requestCloseRef={formCloseRef}
             />
           </div>
         </div>
@@ -811,20 +833,42 @@ export default function SongsPanel() {
             <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-2">
               {/* LIVE — mirrors the display window; zoom here controls it */}
               {liveCollapsed ? (
-                <button
-                  onClick={toggleLiveCollapsed}
-                  title="Expand live monitor"
-                  className="w-full h-9 flex items-center justify-between px-3 rounded-lg bg-surface-sunken border border-edge cursor-pointer text-xs"
-                >
-                  <span className="flex items-center gap-2">
-                    <span className={`w-1.5 h-1.5 rounded-full ${liveSong ? 'bg-live animate-pulse' : 'bg-edge-strong'}`} />
-                    <span className="font-bold tracking-widest text-live">LIVE</span>
-                    <span className="text-ink-mute truncate max-w-[180px]">{liveSong ? liveSong.title : 'Nothing live'}</span>
-                  </span>
-                  <ChevronDownIcon className="w-3.5 h-3.5 text-ink-mute" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={toggleLiveCollapsed}
+                    title="Expand live monitor"
+                    className="flex-1 min-w-0 h-9 flex items-center justify-between px-3 rounded-lg bg-surface-sunken border border-edge cursor-pointer text-xs"
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className={`w-1.5 h-1.5 rounded-full ${liveSong ? 'bg-live animate-pulse' : 'bg-edge-strong'}`} />
+                      <span className="font-bold tracking-widest text-live">LIVE</span>
+                      <span className="text-ink-mute truncate max-w-[180px]">{liveSong ? liveSong.title : 'Nothing live'}</span>
+                    </span>
+                    <ChevronDownIcon className="w-3.5 h-3.5 text-ink-mute" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearLive}
+                    disabled={!liveSong}
+                    title="Clear the live display"
+                    aria-label="Clear live display"
+                    className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Clear
+                  </button>
+                </div>
               ) : (
               <div style={{ width: `${liveFrac * 100}%` }} className="mx-auto relative">
+                <button
+                  type="button"
+                  onClick={handleClearLive}
+                  disabled={!liveSong}
+                  title="Clear the live display"
+                  aria-label="Clear live display"
+                  className="absolute bottom-2 right-11 z-10 h-7 px-2.5 rounded-md bg-black/60 border border-edge text-ink-mute hover:text-danger hover:border-danger/50 text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Clear
+                </button>
                 <button
                   onClick={toggleLiveCollapsed}
                   title="Collapse live monitor"
@@ -938,8 +982,13 @@ export default function SongsPanel() {
                       ))}
                     </select>
                     <div className="flex-1" />
+                    {inlineError && (
+                      <span role="alert" className="text-xs text-danger">
+                        Couldn&apos;t save lyrics — your edit is still here. Try again.
+                      </span>
+                    )}
                     <button
-                      onClick={() => setInlineEdit(false)}
+                      onClick={() => { setInlineEdit(false); setInlineEditSong(null); setInlineError(false); }}
                       className="h-8 px-3 rounded-md text-ink-mute hover:text-ink cursor-pointer text-sm"
                     >
                       Cancel
@@ -981,6 +1030,8 @@ export default function SongsPanel() {
                       <PencilIcon className="w-3.5 h-3.5" />
                     </button>
                     <span className="w-px h-4 bg-edge" aria-hidden />
+                    <CopyLyricsButton song={hoverSong || selectedSong} />
+                    <span className="w-px h-4 bg-edge" aria-hidden />
                     <ZoomControls value={previewZoom} onChange={setPreviewZoom} />
                   </>
                 }
@@ -992,6 +1043,39 @@ export default function SongsPanel() {
         </div>
       </div>
     </>
+  );
+}
+
+// Copies the song's display lyrics as plain text — bold markers stripped,
+// line breaks and verse gaps kept — so it pastes cleanly anywhere.
+function CopyLyricsButton({ song }: { song: Song | null }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const handleCopy = async () => {
+    const text = stripBold(song?.display_lyrics).trim();
+    if (!text) return;
+    try {
+      await copyText(text);
+      setCopied(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      console.error('Failed to copy lyrics:', err);
+      alert("Couldn't copy the lyrics. Try again.");
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={`w-7 h-7 flex items-center justify-center rounded cursor-pointer ${copied ? 'text-ok' : 'text-ink-dim hover:text-ink'}`}
+      aria-label={copied ? 'Lyrics copied' : 'Copy lyrics as plain text'}
+      title={copied ? 'Copied' : 'Copy lyrics (plain text)'}
+    >
+      {copied ? <CheckIcon className="w-3.5 h-3.5" /> : <ClipboardIcon className="w-3.5 h-3.5" />}
+    </button>
   );
 }
 

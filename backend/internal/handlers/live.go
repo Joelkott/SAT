@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"errors"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -36,11 +39,12 @@ type OutputConfig struct {
 	BoxWpx    int     `json:"box_w_px"`   // box width in px; 0 = fill the side panel
 	BoxHpx    int     `json:"box_h_px"`   // box height in px; 0 = fill the IMAG band
 	TextScale float64 `json:"text_scale"` // 0.5..1.0 — text auto-fits the box, so this can only pull it back
+	Layout    string  `json:"layout"`     // "imag" (boxes flank a free centre) or "fullscreen" (boxes split the full width)
 	UpdatedAt int64   `json:"updated_at"` // unix millis
 }
 
 func defaultOutputConfig() OutputConfig {
-	return OutputConfig{Blur: 14, BoxWpx: 0, BoxHpx: 0, TextScale: 1.0, UpdatedAt: 0}
+	return OutputConfig{Blur: 14, BoxWpx: 0, BoxHpx: 0, TextScale: 1.0, Layout: "imag", UpdatedAt: 0}
 }
 
 func clampf(v, lo, hi float64) float64 {
@@ -69,6 +73,13 @@ func clampOutputConfig(cfg OutputConfig) OutputConfig {
 	cfg.BoxHpx = clampi(cfg.BoxHpx, 0, 6000)
 	// Text auto-fits its box; the operator scale only shrinks from that.
 	cfg.TextScale = clampf(cfg.TextScale, 0.5, 1.0)
+	// Only "fullscreen" is a recognised alternative; anything else (including
+	// missing/legacy values) falls back to the IMAG layout.
+	l := strings.ToLower(strings.TrimSpace(cfg.Layout))
+	if l != "fullscreen" {
+		l = "imag"
+	}
+	cfg.Layout = l
 	return cfg
 }
 
@@ -129,11 +140,11 @@ func (h *Handler) ClearLiveScripture(c *fiber.Ctx) error {
 // GetOutputConfig returns the wall-output layout config (public — read by the
 // capture page). GET /api/live/output-config
 func (h *Handler) GetOutputConfig(c *fiber.Ctx) error {
-	blur, boxWpx, boxHpx, textScale, updatedAt, err := h.db.GetOutputConfig()
+	blur, boxWpx, boxHpx, textScale, layout, updatedAt, err := h.db.GetOutputConfig()
 	if err != nil {
 		return c.JSON(defaultOutputConfig())
 	}
-	return c.JSON(clampOutputConfig(OutputConfig{Blur: blur, BoxWpx: boxWpx, BoxHpx: boxHpx, TextScale: textScale, UpdatedAt: updatedAt}))
+	return c.JSON(clampOutputConfig(OutputConfig{Blur: blur, BoxWpx: boxWpx, BoxHpx: boxHpx, TextScale: textScale, Layout: layout, UpdatedAt: updatedAt}))
 }
 
 // SetOutputConfig updates the wall-output layout (media/admin only).
@@ -147,15 +158,92 @@ func (h *Handler) SetOutputConfig(c *fiber.Ctx) error {
 		BoxWpx    int     `json:"box_w_px"`
 		BoxHpx    int     `json:"box_h_px"`
 		TextScale float64 `json:"text_scale"`
+		Layout    string  `json:"layout"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
-	cfg := clampOutputConfig(OutputConfig{Blur: req.Blur, BoxWpx: req.BoxWpx, BoxHpx: req.BoxHpx, TextScale: req.TextScale, UpdatedAt: time.Now().UnixMilli()})
-	if err := h.db.SetOutputConfig(cfg.Blur, cfg.BoxWpx, cfg.BoxHpx, cfg.TextScale, cfg.UpdatedAt); err != nil {
+	cfg := clampOutputConfig(OutputConfig{Blur: req.Blur, BoxWpx: req.BoxWpx, BoxHpx: req.BoxHpx, TextScale: req.TextScale, Layout: req.Layout, UpdatedAt: time.Now().UnixMilli()})
+	if err := h.db.SetOutputConfig(cfg.Blur, cfg.BoxWpx, cfg.BoxHpx, cfg.TextScale, cfg.Layout, cfg.UpdatedAt); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to save output config"})
 	}
 	return c.JSON(cfg)
+}
+
+// --- Wall layout presets ---
+
+// normalizeWallPreset validates a preset name (trimmed, 1..60 runes) and
+// clamps the config values the same way as the live output config.
+func normalizeWallPreset(name string, cfg OutputConfig) (string, OutputConfig, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", cfg, errors.New("name is required")
+	}
+	if utf8.RuneCountInString(name) > 60 {
+		return "", cfg, errors.New("name must be 60 characters or fewer")
+	}
+	return name, clampOutputConfig(cfg), nil
+}
+
+// ListWallPresets returns the saved wall layout presets.
+// GET /api/live/wall-presets
+func (h *Handler) ListWallPresets(c *fiber.Ctx) error {
+	presets, err := h.db.ListWallPresets()
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to load wall presets"})
+	}
+	return c.JSON(presets)
+}
+
+// SaveWallPreset creates or overwrites (by name) a wall preset (media/admin only).
+// POST /api/live/wall-presets
+func (h *Handler) SaveWallPreset(c *fiber.Ctx) error {
+	if role, _ := c.Locals("role").(string); role != "media" && role != "admin" {
+		return c.Status(403).JSON(fiber.Map{"error": "Media or admin access required"})
+	}
+	var req struct {
+		Name      string  `json:"name"`
+		Layout    string  `json:"layout"`
+		Blur      int     `json:"blur"`
+		BoxWpx    int     `json:"box_w_px"`
+		BoxHpx    int     `json:"box_h_px"`
+		TextScale float64 `json:"text_scale"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	name, cfg, err := normalizeWallPreset(req.Name, OutputConfig{Blur: req.Blur, BoxWpx: req.BoxWpx, BoxHpx: req.BoxHpx, TextScale: req.TextScale, Layout: req.Layout})
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	}
+	preset, err := h.db.UpsertWallPreset(name, cfg.Layout, cfg.Blur, cfg.BoxWpx, cfg.BoxHpx, cfg.TextScale)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to save wall preset"})
+	}
+	return c.JSON(preset)
+}
+
+// DeleteWallPreset deletes a custom wall preset (media/admin only). Built-ins
+// cannot be deleted. DELETE /api/live/wall-presets/:id
+func (h *Handler) DeleteWallPreset(c *fiber.Ctx) error {
+	if role, _ := c.Locals("role").(string); role != "media" && role != "admin" {
+		return c.Status(403).JSON(fiber.Map{"error": "Media or admin access required"})
+	}
+	id, err := c.ParamsInt("id")
+	if err != nil || id <= 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid preset id"})
+	}
+	found, builtin, err := h.db.DeleteWallPreset(id)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete wall preset"})
+	}
+	if !found {
+		return c.Status(404).JSON(fiber.Map{"error": "Preset not found"})
+	}
+	if builtin {
+		return c.Status(400).JSON(fiber.Map{"error": "Built-in presets cannot be deleted"})
+	}
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 // DisplayConfig is site-wide lyric display preferences shared by every

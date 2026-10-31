@@ -5,11 +5,17 @@ import { useSearchParams } from 'next/navigation';
 import { liveApi, LiveScripture } from '@/lib/api';
 import { parseVerses } from '@/components/bible/verseUtils';
 import { useFitText } from '@/components/bible/scriptureFit';
+import Dissolve from '@/components/bible/Dissolve';
 
 // Chrome-less scripture output for LED wall capture (Resolume/OBS browser
-// source). Renders two side panels flanking the IMAG region. The IMAG is a
-// configurable rectangle (e.g. top-half centered), and the scripture panels
-// align to its vertical band on either side.
+// source). Two layout presets, chosen from the control window's Wall layout
+// panel (persisted server-side, polled below):
+//   - "imag" (default): two side panels flanking the IMAG region. The IMAG is
+//     a configurable rectangle (e.g. top-half centered), and the scripture
+//     panels align to its vertical band on either side.
+//   - "fullscreen": no IMAG — the two boxes keep the same top. Box width 0 =
+//     auto (each takes half the wall, leaving a ~1% gap in the middle); >0 =
+//     exact px per box. Height is per-preset (0 = the IMAG band height).
 //
 // URL parameters (all optional):
 //   w=2280   total canvas width in px
@@ -23,6 +29,8 @@ import { useFitText } from '@/components/bible/scriptureFit';
 //            capture (OBS browser source) so the glass boxes composite over
 //            Resolume content; default is solid black
 //   guides=1 draw layout guides (setup only — remove for live)
+//   layout=fullscreen  fallback preset until the server config loads (like
+//            blur/boxWpx); the operator's Wall layout setting wins
 //
 // Example for a 2280x1120 wall with a top-half centered 16:9 IMAG:
 //   /output/bible?w=2280&h=1120&cw=996&ch=560
@@ -32,18 +40,7 @@ import { useFitText } from '@/components/bible/scriptureFit';
 
 const POLL_MS = 1000;
 
-function ScripturePanel({
-  abbreviation,
-  reference,
-  content,
-  indic,
-  boxWpx,
-  boxHpx,
-  fontScale,
-  blur,
-  textScale,
-  guides,
-}: {
+type PanelProps = {
   abbreviation: string;
   reference: string;
   content: string;
@@ -54,7 +51,40 @@ function ScripturePanel({
   blur: number;
   textScale: number;
   guides?: boolean;
-}) {
+};
+
+// The glass box stays put across verses; only the text inside dissolves, so
+// the backdrop blur doesn't flicker on every step.
+function ScripturePanel(props: PanelProps) {
+  const { blur } = props;
+  return (
+    <div
+      className="fade-swap w-full h-full rounded-[0.9em] border border-white/20 shadow-2xl overflow-hidden"
+      style={{
+        padding: '4%',
+        backgroundColor: 'rgba(8, 9, 11, 0.55)',
+        backdropFilter: `blur(${blur}px)`,
+        WebkitBackdropFilter: `blur(${blur}px)`,
+      }}
+    >
+      <Dissolve itemKey={`${props.reference}|${props.abbreviation}|${props.content}`} className="w-full h-full">
+        <ScriptureText {...props} />
+      </Dissolve>
+    </div>
+  );
+}
+
+function ScriptureText({
+  abbreviation,
+  reference,
+  content,
+  indic,
+  boxWpx,
+  boxHpx,
+  fontScale,
+  textScale,
+  guides,
+}: PanelProps) {
   const verses = useMemo(() => parseVerses(content), [content]);
 
   // Each panel measures its OWN text against its OWN box and picks the largest
@@ -74,51 +104,40 @@ function ScripturePanel({
 
   return (
     <div
-      key={reference}
-      className="fade-swap w-full h-full rounded-[0.9em] border border-white/20 shadow-2xl overflow-hidden"
-      style={{
-        padding: '4%',
-        backgroundColor: 'rgba(8, 9, 11, 0.55)',
-        backdropFilter: `blur(${blur}px)`,
-        WebkitBackdropFilter: `blur(${blur}px)`,
-      }}
+      ref={areaRef}
+      className={`w-full h-full flex items-center justify-center overflow-hidden ${
+        guides ? 'outline outline-1 outline-dashed outline-[#4ade80]/70' : ''
+      }`}
     >
       <div
-        ref={areaRef}
-        className={`w-full h-full flex items-center justify-center overflow-hidden ${
-          guides ? 'outline outline-1 outline-dashed outline-[#4ade80]/70' : ''
-        }`}
+        ref={textRef}
+        className="w-full text-center"
+        style={{ fontSize: fontSize * scale }}
       >
+        {/* ProPresenter-style reference: white box, black text */}
         <div
-          ref={textRef}
-          className="w-full text-center"
-          style={{ fontSize: fontSize * scale }}
+          className="inline-block bg-white text-black font-bold rounded-[0.12em]"
+          style={{ fontSize: '0.62em', padding: '0.18em 0.55em', marginBottom: '0.7em' }}
         >
-          {/* ProPresenter-style reference: white box, black text */}
-          <div
-            className="inline-block bg-white text-black font-bold rounded-[0.12em]"
-            style={{ fontSize: '0.62em', padding: '0.18em 0.55em', marginBottom: '0.7em' }}
-          >
-            {reference}
-            <span className="font-semibold opacity-60"> {abbreviation}</span>
-          </div>
-          {/* Scripture body: plain white text */}
-          <div
-            className={`text-white ${indic ? 'script-indic' : ''}`}
-            style={{ lineHeight: indic ? 1.4 : 1.3 }}
-          >
-            {verses.map((v, i) => (
-              <span key={v.num}>
-                {verses.length > 1 && (
-                  <sup className="text-[0.55em] font-bold text-white/60 mr-[0.35em]">
-                    {v.num}
-                  </sup>
-                )}
-                {v.text}
-                {i < verses.length - 1 ? ' ' : ''}
-              </span>
-            ))}
-          </div>
+          {reference}
+          <span className="font-semibold opacity-60"> {abbreviation}</span>
+        </div>
+        {/* Scripture body: plain white text */}
+        <div
+          className={`text-white ${indic ? 'script-indic' : ''}`}
+          style={{ lineHeight: indic ? 1.4 : 1.3 }}
+        >
+          {verses.map((v, i) => (
+            <span key={v.num}>
+              {verses.length > 1 && (
+                <sup className="text-[0.55em] font-bold text-white/60 mr-[0.35em]">
+                  {v.num}
+                </sup>
+              )}
+              {v.text}
+              {i < verses.length - 1 ? ' ' : ''}
+            </span>
+          ))}
         </div>
       </div>
     </div>
@@ -150,6 +169,9 @@ function BibleOutput() {
   const [boxWpx, setBoxWpx] = useState<number>(Number(params.get('boxWpx')) || 0);
   const [boxHpx, setBoxHpx] = useState<number>(Number(params.get('boxHpx')) || 0);
   const [textScale, setTextScale] = useState<number>(Number(params.get('ts')) || 1);
+  const [layout, setLayout] = useState<'imag' | 'fullscreen'>(
+    params.get('layout') === 'fullscreen' ? 'fullscreen' : 'imag'
+  );
 
   // No auth: this page is a browser-capture source (Resolume/OBS) and cannot
   // carry a session. It only reads the public GET /live/scripture endpoint.
@@ -201,6 +223,7 @@ function BibleOutput() {
           setBoxWpx(cfg.box_w_px);
           setBoxHpx(cfg.box_h_px);
           setTextScale(cfg.text_scale);
+          setLayout(cfg.layout === 'fullscreen' ? 'fullscreen' : 'imag');
         }
       } catch {
         // Keep last-known layout on transient errors.
@@ -217,10 +240,18 @@ function BibleOutput() {
 
   // Each box is anchored to its top screen corner (left box top-left, right
   // box top-right) and extends inward by its width and down by its height.
-  // 0 = fall back to filling the side panel / IMAG band. Boxes are NOT capped
-  // to the panel — the operator sets exact px and the box grows past the panel
-  // if asked.
-  const boxW = boxWpx > 0 ? boxWpx : sideW;
+  // IMAG layout: width = box_w_px, or 0 = fall back to filling the side
+  // panel. Boxes are NOT capped to the panel — the operator sets exact px and
+  // the box grows past the panel if asked.
+  // Fullscreen layout: box_w_px 0 = auto, each box is half the wall minus a
+  // ~1% centre gap so the two meet near the middle; >0 = exact px per box.
+  // Height is per-preset (box_h_px; 0 = the IMAG band) and top is the same
+  // in both layouts.
+  const fullscreen = layout === 'fullscreen';
+  const gap = Math.round(w * 0.01);
+  const boxW = fullscreen
+    ? (boxWpx > 0 ? boxWpx : Math.max(0, Math.floor((w - gap) / 2)))
+    : (boxWpx > 0 ? boxWpx : sideW);
   const boxH = boxHpx > 0 ? boxHpx : centerH;
   const boxTop = centerY;
 
@@ -245,7 +276,7 @@ function BibleOutput() {
       </div>
 
       {/* IMAG region — occupied by the IMAG layer in Resolume */}
-      {guides && (
+      {guides && !fullscreen && (
         <div
           className="absolute border-2 border-dashed border-[#e9373a]/70 flex items-center justify-center"
           style={{ left: sideW, top: centerY, width: centerW, height: centerH }}

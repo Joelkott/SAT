@@ -84,3 +84,24 @@ export function groupTranslations(list: BibleTranslation[]): TranslationGroup[] 
 
   return groups;
 }
+
+/** api.bible KJV editions the backend hides from the catalog.
+ *  Mirrors hiddenRemoteBibles in backend/internal/bible/handlers.go — keep in sync. */
+export const HIDDEN_KJV_IDS = [
+  'de4e12af7f28f599-01',
+  'de4e12af7f28f599-02',
+  '55212e3cf5d04d49-01',
+  'a6aee10bb058511c-01',
+  'a6aee10bb058511c-02',
+];
+
+/** Map saved/received hidden KJV ids to the bundled local-kjv, de-duplicated
+ *  (first occurrence wins), so old columns, pins and mirrors still resolve. */
+export function normalizeBibleIds(ids: string[]): string[] {
+  const out: string[] = [];
+  for (const raw of ids) {
+    const id = HIDDEN_KJV_IDS.includes(raw) ? 'local-kjv' : raw;
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}

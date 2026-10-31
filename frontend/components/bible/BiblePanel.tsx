@@ -8,6 +8,8 @@ import {
   BibleBook,
   BibleChapter,
   OutputConfig,
+  WallLayout,
+  WallPreset,
 } from '@/lib/api';
 import TranslationSelector from '@/components/bible/TranslationSelector';
 import BookList from '@/components/bible/BookList';
@@ -22,6 +24,7 @@ import {
   referenceString,
   resolveBookAlias,
 } from '@/components/bible/verseUtils';
+import { normalizeBibleIds } from '@/components/bible/translationGroups';
 import { PlusIcon, XIcon, ChevronRightIcon, BookOpenIcon, PinIcon } from '@/components/icons';
 
 // Language ids whose scripts need taller line boxes (stacked conjuncts).
@@ -29,10 +32,54 @@ const INDIC_LANGS = new Set(['mal', 'hin', 'tam', 'tel', 'kan']);
 
 const MAX_COLUMNS = 4;
 
+// Built-in pins shown to every operator ahead of their own; they can't be unpinned.
+const PERMANENT_PINS = [
+  { label: "Lord's Table", ref: '1 Corinthians 11:23' },
+];
+
 // Per-column chapter payload; empty content marks "not available here".
 interface ChapterData {
   content: string;
   reference: string;
+}
+
+// A send requested while the chapter was still loading, bound to the exact
+// navigation it was made for. '*' chapter/selection = accept wherever an
+// in-flight cross-boundary arrow step lands.
+type PendingSend = {
+  kind: 'wall' | 'display' | 'mirror';
+  gen: number;
+  chapterId: string;
+  selKey: string;
+  bibles?: string[];
+};
+
+const selKey = (s: VerseSelection | null) => (s ? `${s.start}-${s.end}` : 'all');
+
+type WallCfg = { blur: number; box_w_px: number; box_h_px: number; text_scale: number; layout: WallLayout };
+
+const toWallCfg = (c: OutputConfig): WallCfg => ({
+  blur: c.blur,
+  box_w_px: c.box_w_px,
+  box_h_px: c.box_h_px,
+  text_scale: c.text_scale,
+  layout: c.layout === 'fullscreen' ? 'fullscreen' : 'imag',
+});
+
+const sameWallCfg = (a: WallCfg, b: WallCfg) =>
+  a.blur === b.blur &&
+  a.box_w_px === b.box_w_px &&
+  a.box_h_px === b.box_h_px &&
+  a.text_scale === b.text_scale &&
+  a.layout === b.layout;
+
+// Enter on a focused button/link should activate it, not send to the wall —
+// except inside [data-enter-sends] (verse/chapter/pin navigation), where the
+// operator clicks then presses Enter to send.
+function isActivatableControl(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el?.closest) return false;
+  return !!el.closest('button, a, [role="button"]') && !el.closest('[data-enter-sends]');
 }
 
 export default function BiblePanel() {
@@ -61,6 +108,18 @@ export default function BiblePanel() {
 
   const primaryBibleId = selectedBibleIds[0] || '';
 
+  // Bumped on every operator navigation intent; a queued send only fires if
+  // no navigation happened since it was requested.
+  const navGenRef = useRef(0);
+  // Generation of the reference lookup still awaiting its chapter list. It
+  // only counts while it is the latest navigation, so a newer click ends it.
+  const searchGenRef = useRef<number | null>(null);
+  const isSearchInFlight = () =>
+    searchGenRef.current !== null && searchGenRef.current === navGenRef.current;
+  // Cross-boundary stepping: which verse/chapter to land on once data loads.
+  const pendingVerseRef = useRef<'first' | 'last' | null>(null);
+  const pendingChapterRef = useRef<'first' | 'last' | null>(null);
+
   // 1. On mount: fetch translations, default to KJV + MOV.
   useEffect(() => {
     let cancelled = false;
@@ -76,16 +135,14 @@ export default function BiblePanel() {
         try {
           const saved = JSON.parse(localStorage.getItem('bible-columns') || '[]');
           if (Array.isArray(saved) && saved.length > 0) {
-            initial = saved.filter((id: string) => data.some((t) => t.id === id));
+            initial = normalizeBibleIds(saved.filter((id: unknown) => typeof id === 'string'))
+              .filter((id) => data.some((t) => t.id === id));
           }
         } catch {}
 
         if (initial.length === 0) {
           // Fall back to KJV + Malayalam OV defaults.
-          const kjv =
-            data.find((t) => t.id === 'local-kjv') ||
-            data.find((t) => t.id === 'de4e12af7f28f599-02') ||
-            data.find((t) => t.abbreviation === 'engKJV');
+          const kjv = data.find((t) => t.id === 'local-kjv');
           const mov =
             data.find((t) => t.id === 'local-mal-ov') ||
             data.find((t) => t.language?.id === 'mal');
@@ -232,9 +289,9 @@ export default function BiblePanel() {
   const handleAddSlot = useCallback(() => {
     setSelectedBibleIds((prev) => {
       if (prev.length >= MAX_COLUMNS) return prev;
-      // Prefer a reliable full-canon default (api.bible KJV), then any unused.
+      // Prefer a reliable full-canon default (bundled KJV), then any unused.
       const unused =
-        translations.find((t) => t.id === 'de4e12af7f28f599-02' && !prev.includes(t.id)) ||
+        translations.find((t) => t.id === 'local-kjv' && !prev.includes(t.id)) ||
         translations.find((t) => !prev.includes(t.id));
       return unused ? [...prev, unused.id] : prev;
     });
@@ -242,6 +299,7 @@ export default function BiblePanel() {
 
   // Navigation handlers -----------------------------------------------------
   const handleSelectBook = useCallback((book: BibleBook) => {
+    navGenRef.current++;
     setSelectedBook(book);
     setSelectedChapter(null);
     setSelection(null);
@@ -249,16 +307,19 @@ export default function BiblePanel() {
   }, []);
 
   const handleSelectChapter = useCallback((chapter: BibleChapter) => {
+    navGenRef.current++;
     setSelectedChapter(chapter);
     setSelection(null);
   }, []);
 
   const handleSelectVerse = useCallback((verseNumber: string) => {
+    navGenRef.current++;
     const n = Number(verseNumber);
     setSelection({ start: n, end: n });
   }, []);
 
   const handleShowFullChapter = useCallback(() => {
+    navGenRef.current++;
     setSelection(null);
   }, []);
 
@@ -287,9 +348,14 @@ export default function BiblePanel() {
     return best ? best.t.id : null;
   }, [translations]);
 
-  const handleReferenceSearch = useCallback(async (reference: string) => {
+  // Resolves to the navigated target on success (so a mirror can bind its
+  // send to it), or null on any failure / when a newer navigation won.
+  const handleReferenceSearch = useCallback(async (
+    reference: string
+  ): Promise<{ chapterId: string; selKey: string; gen: number } | null> => {
     const trimmed = reference.trim();
-    if (!trimmed) return;
+    if (!trimmed) return null;
+    const gen = ++navGenRef.current;
 
     // Normalize separators so "gen 1 20", "gen 1:20", "gen 1 : 20", and
     // "gen 1 20-25" / "gen 1 20 25" all parse the same way.
@@ -332,7 +398,7 @@ export default function BiblePanel() {
     const match = normalized.match(/^(\d? ?[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)*) (\d+)(?:[: ](\d+)(?:[- ](\d+))?)?$/u);
     if (!match) {
       setError('Reference not found. Try John 3:16, Gen 1 20, or Gen 1:1-5.');
-      return;
+      return null;
     }
     const bookQuery = match[1].trim().toLowerCase();
     const chapterNum = match[2];
@@ -356,32 +422,49 @@ export default function BiblePanel() {
     });
     if (!matchedBook) {
       setError('Reference not found. Try a format like John 3:16 or Gen 1:1-5.');
-      return;
+      return null;
     }
 
+    // Until this lookup lands, the PREVIOUS chapter/verse is still selected
+    // (and "ready"); sends made meanwhile must queue for the new reference.
+    searchGenRef.current = gen;
     try {
       setError(null);
       const chaptersData = await bibleApi.getChapters(searchBibleId, matchedBook.id);
+      // A newer navigation happened while this was in flight — drop it.
+      if (gen !== navGenRef.current) return null;
       const matchedChapter = chaptersData.find((c) => c.number === chapterNum);
       if (!matchedChapter) {
         setError('Reference not found. Try a format like John 3:16 or Gen 1:1-5.');
-        return;
+        if (pendingSendRef.current?.gen === gen) pendingSendRef.current = null;
+        return null;
       }
       setChapters(chaptersData);
       setSelectedBook(matchedBook);
       setSelectedChapter(matchedChapter);
-      if (startVerse) {
-        setSelection({ start: Number(startVerse), end: Number(endVerse || startVerse) });
-      } else {
-        setSelection(null);
-      }
+      const nextSelection: VerseSelection | null = startVerse
+        ? { start: Number(startVerse), end: Number(endVerse || startVerse) }
+        : null;
+      setSelection(nextSelection);
+      return { chapterId: matchedChapter.id, selKey: selKey(nextSelection), gen };
     } catch (err) {
+      if (gen !== navGenRef.current) return null;
       console.error('Error searching reference:', err);
       setError('Reference not found. Try a format like John 3:16 or Gen 1:1-5.');
+      if (pendingSendRef.current?.gen === gen) pendingSendRef.current = null;
+      return null;
+    } finally {
+      if (searchGenRef.current === gen) searchGenRef.current = null;
+      if (gen === navGenRef.current) {
+        // Re-check queued sends even if the lookup landed on the same
+        // chapter/verse (no state change would re-run the effect).
+        setPendingTick((t) => t + 1);
+      }
     }
   }, [books, primaryBibleId, findTranslationByAbbrev]);
 
   const handleBreadcrumbClick = useCallback((level: 'root' | 'book') => {
+    navGenRef.current++;
     if (level === 'root') {
       setSelectedBook(null);
       setSelectedChapter(null);
@@ -403,6 +486,8 @@ export default function BiblePanel() {
   // restores the same view. Older pins were plain strings — normalize them.
   type Pin = { ref: string; bibles?: string[] };
   const [pins, setPins] = useState<Pin[]>([]);
+  const isPinned = (ref: string) =>
+    PERMANENT_PINS.some((p) => p.ref === ref) || pins.some((p) => p.ref === ref);
   useEffect(() => {
     try { setRecents(JSON.parse(localStorage.getItem('bible-recents') || '[]')); } catch {}
     try {
@@ -417,22 +502,237 @@ export default function BiblePanel() {
     } catch {}
   }, []);
 
-  // Wall-output layout (blur + box size) — media/admin adjustable, persisted
-  // server-side and applied live on the Resolume/OBS capture page.
-  type WallCfg = { blur: number; box_w_px: number; box_h_px: number; text_scale: number };
-  const [outputCfg, setOutputCfg] = useState<WallCfg>({ blur: 14, box_w_px: 0, box_h_px: 0, text_scale: 1 });
+  // Team role: media proposes verses, worship gets an accept prompt.
+  // guest is deliberately not in the union — it falls through to the default
+  // 'worship' behaviour, which is exactly what a guest operator should get.
+  const [role, setRole] = useState<'media' | 'worship' | 'admin'>('worship');
+  useEffect(() => {
+    const saved = localStorage.getItem('sat-role');
+    if (saved === 'media' || saved === 'worship' || saved === 'admin') setRole(saved);
+  }, []);
+
+  // Wall-output layout (preset + blur + box size) — media/admin adjustable,
+  // persisted server-side and applied live on the Resolume/OBS capture page.
+  const [outputCfg, setOutputCfg] = useState<WallCfg>({ blur: 14, box_w_px: 0, box_h_px: 0, text_scale: 1, layout: 'imag' });
+  const [outputCfgLoaded, setOutputCfgLoaded] = useState(false);
   const [showWallLayout, setShowWallLayout] = useState(false);
   const [savingCfg, setSavingCfg] = useState(false);
+  // Box width/height being typed — committed on blur/Enter, Escape reverts.
+  const [boxDraft, setBoxDraft] = useState<{ field: 'box_w_px' | 'box_h_px'; value: string } | null>(null);
+  const boxEscapeRef = useRef(false);
+  // Latest save wins: only the newest response may overwrite the UI.
+  const cfgSaveSeqRef = useRef(0);
+  const cfgInFlightRef = useRef(0);
+  // True while a debounced slider save is pending or a save is in flight, so
+  // the poll never clobbers a value being edited.
+  const cfgDirtyRef = useRef(false);
+  const cfgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cfgQueuedRef = useRef<WallCfg | null>(null);
+
   useEffect(() => {
     liveApi.getOutputConfig()
-      .then((c) => setOutputCfg({ blur: c.blur, box_w_px: c.box_w_px, box_h_px: c.box_h_px, text_scale: c.text_scale }))
-      .catch(() => {});
+      .then((c) => {
+        setOutputCfg(toWallCfg(c));
+        setOutputCfgLoaded(true);
+      })
+      .catch((err) => console.error('Error loading wall layout:', err));
   }, []);
+
   const saveOutputCfg = useCallback((next: WallCfg) => {
+    if (cfgTimerRef.current) {
+      clearTimeout(cfgTimerRef.current);
+      cfgTimerRef.current = null;
+    }
+    cfgQueuedRef.current = null;
     setOutputCfg(next);
+    const seq = ++cfgSaveSeqRef.current;
+    cfgInFlightRef.current++;
+    cfgDirtyRef.current = true;
     setSavingCfg(true);
-    liveApi.setOutputConfig(next).catch(() => {}).finally(() => setSavingCfg(false));
+    liveApi.setOutputConfig(next)
+      .then((resp) => {
+        // The server clamps values; show what the wall actually uses.
+        if (seq === cfgSaveSeqRef.current) setOutputCfg(toWallCfg(resp));
+      })
+      .catch((err) => {
+        console.error('Error saving wall layout:', err);
+        setError('Could not save the wall layout. Check the backend connection.');
+        // Revert the panel to what the server really has.
+        liveApi.getOutputConfig()
+          .then((c) => { if (seq === cfgSaveSeqRef.current) setOutputCfg(toWallCfg(c)); })
+          .catch(() => {});
+      })
+      .finally(() => {
+        cfgInFlightRef.current--;
+        if (cfgInFlightRef.current === 0) {
+          setSavingCfg(false);
+          if (!cfgTimerRef.current) cfgDirtyRef.current = false;
+        }
+      });
   }, []);
+
+  // Sliders: update the UI immediately, POST at most every ~250ms.
+  const queueOutputCfgSave = useCallback((next: WallCfg) => {
+    setOutputCfg(next);
+    cfgDirtyRef.current = true;
+    cfgQueuedRef.current = next;
+    if (cfgTimerRef.current) clearTimeout(cfgTimerRef.current);
+    cfgTimerRef.current = setTimeout(() => {
+      cfgTimerRef.current = null;
+      const queued = cfgQueuedRef.current;
+      if (queued) saveOutputCfg(queued);
+    }, 250);
+  }, [saveOutputCfg]);
+
+  // On unmount, flush a pending slider save so the last value isn't lost.
+  useEffect(() => () => {
+    if (cfgTimerRef.current) {
+      clearTimeout(cfgTimerRef.current);
+      cfgTimerRef.current = null;
+      const queued = cfgQueuedRef.current;
+      cfgQueuedRef.current = null;
+      if (queued) liveApi.setOutputConfig(queued).catch(() => {});
+    }
+  }, []);
+
+  // While the panel is open, follow changes made from other machines.
+  const showWallPanel = (role === 'media' || role === 'admin') && showWallLayout;
+  useEffect(() => {
+    if (!showWallPanel) return;
+    let cancelled = false;
+    const poll = () => {
+      liveApi.getOutputConfig()
+        .then((c) => {
+          if (cancelled || cfgDirtyRef.current || cfgInFlightRef.current > 0) return;
+          const next = toWallCfg(c);
+          setOutputCfg((prev) => (sameWallCfg(prev, next) ? prev : next));
+          setOutputCfgLoaded(true);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [showWallPanel]);
+
+  // Saved wall layout presets (server-side, shared by every machine).
+  const [wallPresets, setWallPresets] = useState<WallPreset[]>([]);
+  const [presetsLoaded, setPresetsLoaded] = useState(false);
+  const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null);
+  const [presetName, setPresetName] = useState('');
+  const presetsInitRef = useRef(false);
+  const loadWallPresets = useCallback(
+    () =>
+      liveApi.getWallPresets()
+        .then(setWallPresets)
+        .catch((err) => console.error('Error loading wall presets:', err))
+        .finally(() => setPresetsLoaded(true)),
+    []
+  );
+  useEffect(() => {
+    loadWallPresets();
+  }, [loadWallPresets]);
+  const presetMatches = (p: WallPreset, cfg: WallCfg) =>
+    p.layout === cfg.layout &&
+    p.blur === cfg.blur &&
+    p.box_w_px === cfg.box_w_px &&
+    p.box_h_px === cfg.box_h_px &&
+    Math.abs(p.text_scale - cfg.text_scale) < 0.001;
+  const matchedPreset = useMemo(
+    () => wallPresets.find((p) => presetMatches(p, outputCfg)) ?? null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [wallPresets, outputCfg]
+  );
+  const selectedPreset = useMemo(
+    () => wallPresets.find((p) => p.id === selectedPresetId) ?? null,
+    [wallPresets, selectedPresetId]
+  );
+  // Once BOTH presets and the live config have loaded, pre-select the preset
+  // matching the live config (matching against the default config would pick
+  // the wrong one).
+  useEffect(() => {
+    if (presetsInitRef.current || !presetsLoaded || !outputCfgLoaded) return;
+    presetsInitRef.current = true;
+    if (selectedPresetId === null && matchedPreset) setSelectedPresetId(matchedPreset.id);
+  }, [presetsLoaded, outputCfgLoaded, matchedPreset, selectedPresetId]);
+
+  const applyPreset = useCallback((p: WallPreset) => {
+    setSelectedPresetId(p.id);
+    saveOutputCfg({
+      blur: p.blur,
+      box_w_px: p.box_w_px,
+      box_h_px: p.box_h_px,
+      text_scale: p.text_scale,
+      layout: p.layout === 'fullscreen' ? 'fullscreen' : 'imag',
+    });
+  }, [saveOutputCfg]);
+
+  const handleSavePreset = useCallback(async () => {
+    const name = presetName.trim();
+    if (!name) return;
+    if (wallPresets.some((p) => p.name === name) && !confirm(`Overwrite preset "${name}"?`)) return;
+    try {
+      const saved = await liveApi.saveWallPreset({ name, ...outputCfg });
+      setSelectedPresetId(saved.id);
+      setPresetName('');
+      await loadWallPresets();
+    } catch (error) {
+      console.error('Error saving wall preset:', error);
+      setError(`Could not save preset "${name}". Check the backend connection.`);
+    }
+  }, [presetName, wallPresets, outputCfg, loadWallPresets]);
+
+  const handleUpdatePreset = useCallback(async () => {
+    const p = selectedPreset;
+    if (!p) return;
+    if (!confirm(`Update "${p.name}" with the current settings?`)) return;
+    try {
+      await liveApi.saveWallPreset({ name: p.name, ...outputCfg });
+      await loadWallPresets();
+    } catch (error) {
+      console.error('Error updating wall preset:', error);
+      setError(`Could not update preset "${p.name}". Check the backend connection.`);
+    }
+  }, [selectedPreset, outputCfg, loadWallPresets]);
+
+  const handleDeletePreset = useCallback(async (p: WallPreset) => {
+    if (p.builtin) return;
+    if (!confirm(`Delete preset "${p.name}"?`)) return;
+    try {
+      await liveApi.deleteWallPreset(p.id);
+      if (selectedPresetId === p.id) setSelectedPresetId(null);
+      await loadWallPresets();
+    } catch (error) {
+      console.error('Error deleting wall preset:', error);
+      setError(`Could not delete preset "${p.name}". Check the backend connection.`);
+    }
+  }, [selectedPresetId, loadWallPresets]);
+
+  // Box width/height inputs: edit a draft, commit on blur/Enter, Escape reverts.
+  const boxInputProps = (field: 'box_w_px' | 'box_h_px') => ({
+    value: boxDraft?.field === field ? boxDraft.value : String(outputCfg[field]),
+    onFocus: () => setBoxDraft({ field, value: String(outputCfg[field]) }),
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setBoxDraft({ field, value: e.target.value }),
+    onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
+      const escaped = boxEscapeRef.current;
+      boxEscapeRef.current = false;
+      setBoxDraft(null);
+      if (escaped) return;
+      const v = Math.max(0, Math.round(Number(e.currentTarget.value) || 0));
+      if (v !== outputCfg[field]) saveOutputCfg({ ...outputCfg, [field]: v });
+    },
+    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.currentTarget.blur();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        boxEscapeRef.current = true;
+        setBoxDraft(null);
+        e.currentTarget.blur();
+      }
+    },
+  });
 
   // Human-readable reference of what is currently on screen, e.g. "John 3:16-18".
   const currentReference = useMemo(() => {
@@ -473,20 +773,13 @@ export default function BiblePanel() {
   // (ignoring any that no longer exist), then loads the reference.
   const openPin = useCallback((pin: Pin) => {
     if (pin.bibles && pin.bibles.length > 0) {
-      const valid = pin.bibles.filter((id) => translations.some((t) => t.id === id));
+      const valid = normalizeBibleIds(pin.bibles)
+        .filter((id) => translations.some((t) => t.id === id))
+        .slice(0, MAX_COLUMNS);
       if (valid.length > 0) setSelectedBibleIds(valid);
     }
     handleReferenceSearch(pin.ref);
   }, [translations, handleReferenceSearch]);
-
-  // Team role: media proposes verses, worship gets an accept prompt.
-  // guest is deliberately not in the union — it falls through to the default
-  // 'worship' behaviour, which is exactly what a guest operator should get.
-  const [role, setRole] = useState<'media' | 'worship' | 'admin'>('worship');
-  useEffect(() => {
-    const saved = localStorage.getItem('sat-role');
-    if (saved === 'media' || saved === 'worship' || saved === 'admin') setRole(saved);
-  }, []);
 
   const [suggestion, setSuggestion] = useState<{ reference: string; updated_at: number; bibles?: string[] } | null>(null);
   const seenSuggestionRef = useRef<number>(0);
@@ -505,27 +798,47 @@ export default function BiblePanel() {
     });
   };
 
-  // When set, send to the wall as soon as the navigated chapter's content is
-  // loaded (mirroring navigates first, then data arrives async).
-  const pendingWallSendRef = useRef(false);
+  // When set, send as soon as the navigated chapter's content is loaded
+  // (navigation is instant, the chapter text arrives async). Bound to the
+  // navigation it was requested for — see PendingSend. 'mirror' is a wall
+  // send triggered by mirroring worship.
+  const pendingSendRef = useRef<PendingSend | null>(null);
+  // Re-runs the fire effect when a pending send is queued asynchronously.
+  const [pendingTick, setPendingTick] = useState(0);
   // Marks the next wall send as mirror-triggered (suppresses re-publishing).
   const mirrorSendRef = useRef(false);
   // What this screen is currently showing, for the same-verse guard below.
   const currentReferenceRef = useRef<string | null>(null);
   currentReferenceRef.current = currentReference;
 
-  // Mirror worship's passage AND translation columns, then queue the wall send.
-  const applyMirror = useCallback((reference: string, bibles?: string[]) => {
+  // Mirror worship's passage AND translation columns, then queue the wall
+  // send bound to the mirrored chapter + selection + columns, so the old
+  // chapter's verse (or old columns) can never be what goes out.
+  const applyMirror = useCallback(async (reference: string, bibles?: string[]) => {
+    let mirrored: string[] | undefined;
     if (bibles && bibles.length > 0) {
-      const valid = bibles.filter((id) => translations.some((t) => t.id === id)).slice(0, MAX_COLUMNS);
+      const valid = normalizeBibleIds(bibles)
+        .filter((id) => translations.some((t) => t.id === id))
+        .slice(0, MAX_COLUMNS);
       if (valid.length > 0) {
+        mirrored = valid;
         setSelectedBibleIds((prev) =>
           prev.length === valid.length && prev.every((id, i) => id === valid[i]) ? prev : valid
         );
       }
     }
-    pendingWallSendRef.current = true;
-    handleReferenceSearch(reference);
+    pendingSendRef.current = null;
+    const target = await handleReferenceSearch(reference);
+    // Failed or superseded search: the error (if any) is already shown.
+    if (!target) return;
+    pendingSendRef.current = {
+      kind: 'mirror',
+      gen: target.gen,
+      chapterId: target.chapterId,
+      selKey: target.selKey,
+      bibles: mirrored,
+    };
+    setPendingTick((t) => t + 1);
   }, [translations, handleReferenceSearch]);
 
   // Both teams poll the shared suggestion channel, each listening only for
@@ -565,6 +878,7 @@ export default function BiblePanel() {
       if (e.key !== 'Enter') return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (isActivatableControl(e.target)) return;
       e.preventDefault();
       seenSuggestionRef.current = suggestion.updated_at;
       if (role === 'media') applyMirror(suggestion.reference, suggestion.bibles);
@@ -585,6 +899,16 @@ export default function BiblePanel() {
     displayChannelRef.current = ch;
     return () => { ch.close(); displayChannelRef.current = null; };
   }, []);
+
+  // Navigation updates the chapter and verse selection immediately, but
+  // fullChapters keeps the PREVIOUS chapter's text until the new fetch lands.
+  // Building columns in that gap pairs the new verse numbers with the old
+  // chapter — the wrong verse, or an empty one whose lone reference label
+  // auto-fits to fill the whole box. Sends wait until this is true.
+  const chapterReady =
+    !!selectedChapter &&
+    fullChaptersRef.current.chapterId === selectedChapter.id &&
+    selectedBibleIds.every((id) => fullChapters[id] !== undefined);
 
   // Build LEFT=English / RIGHT=Malayalam columns for outputs.
   const buildScriptureColumns = useCallback(() => {
@@ -613,9 +937,36 @@ export default function BiblePanel() {
   }, [selectedBibleIds, translations, fullChapters, selection]);
 
   // Send the current selection to the LED-wall output page via the backend.
+  // Queue a send for when the current navigation's chapter text arrives.
+  const queuePendingSend = useCallback((kind: 'wall' | 'display') => {
+    if (!selectedChapter) return;
+    const cur = pendingSendRef.current;
+    // Never downgrade a pending mirror for this same navigation.
+    if (cur && cur.kind === 'mirror' && cur.gen === navGenRef.current) return;
+    // A cross-boundary arrow step or reference lookup is still landing:
+    // accept wherever it lands.
+    const stepInFlight =
+      !!pendingVerseRef.current || !!pendingChapterRef.current || isSearchInFlight();
+    pendingSendRef.current = {
+      kind,
+      gen: navGenRef.current,
+      chapterId: stepInFlight ? '*' : selectedChapter.id,
+      selKey: stepInFlight ? '*' : selKey(selection),
+    };
+  }, [selectedChapter, selection]);
+
   const handleSendToWall = useCallback(async () => {
     if (!selectedChapter) return;
+    if (!chapterReady || isSearchInFlight()) {
+      queuePendingSend('wall');
+      return;
+    }
     const columns = buildScriptureColumns();
+    if (columns.length === 0) {
+      mirrorSendRef.current = false;
+      setError('Nothing to send — the selected passage has no text in the chosen translations.');
+      return;
+    }
     // A wall send triggered by mirroring worship must not re-publish a media
     // suggestion — that would echo worship's own verse back to them.
     const isMirrorSend = mirrorSendRef.current;
@@ -634,18 +985,26 @@ export default function BiblePanel() {
       setWallState('idle');
       setError('Could not send to the wall output. Check the backend connection.');
     }
-  }, [selectedChapter, buildScriptureColumns, role]);
+  }, [selectedChapter, chapterReady, buildScriptureColumns, role, queuePendingSend]);
 
   // Send the current selection to the same-machine /display window. When
   // worship takes a verse live, publish it so the media machine can mirror.
   const handleSendToDisplay = useCallback(() => {
+    if (!selectedChapter) return;
+    if (!chapterReady || isSearchInFlight()) {
+      queuePendingSend('display');
+      return;
+    }
     const columns = buildScriptureColumns();
-    if (columns.length === 0) return;
+    if (columns.length === 0) {
+      setError('Nothing to send — the selected passage has no text in the chosen translations.');
+      return;
+    }
     displayChannelRef.current?.postMessage({ type: 'scripture', columns });
     if (role === 'worship' && columns[0]) {
       liveApi.setSuggestion(columns[0].reference, 'worship', selectedBibleIds).catch(() => {});
     }
-  }, [buildScriptureColumns, role, selectedBibleIds]);
+  }, [selectedChapter, chapterReady, buildScriptureColumns, role, selectedBibleIds, queuePendingSend]);
 
   // Enter sends the current selection to the wall/display (role-appropriate).
   // Skipped when a suggestion banner is visible (that handler takes priority)
@@ -657,6 +1016,9 @@ export default function BiblePanel() {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if ((e.target as HTMLElement)?.isContentEditable) return;
+      // A focused button/link (outside verse/chapter/pin navigation) gets
+      // its own Enter activation instead of a send.
+      if (isActivatableControl(e.target)) return;
       e.preventDefault();
       if (role === 'media' || role === 'admin') {
         handleSendToWall();
@@ -668,23 +1030,58 @@ export default function BiblePanel() {
     return () => window.removeEventListener('keydown', onKey);
   }, [suggestion, selectedChapter, role, handleSendToWall, handleSendToDisplay]);
 
-  // Complete a pending mirror: once the navigated chapter's content arrives,
-  // push it to the wall automatically.
+  // Complete a queued send (mirror, or a push made while the chapter was
+  // still loading) only for the exact navigation it was requested for, once
+  // that chapter's own content (and every mirrored column) has arrived.
+  // Fires at most once; any other navigation discards it.
   useEffect(() => {
-    if (!pendingWallSendRef.current || !selectedChapter) return;
-    if (!fullChapters[primaryBibleId]?.content) return;
-    pendingWallSendRef.current = false;
-    mirrorSendRef.current = true;
-    handleSendToWall();
-  }, [fullChapters, selectedChapter, primaryBibleId, handleSendToWall]);
+    const p = pendingSendRef.current;
+    if (!p) return;
+    if (p.gen !== navGenRef.current) {
+      pendingSendRef.current = null;
+      return;
+    }
+    // A cross-boundary arrow step is still landing (new chapter/verse not
+    // selected yet) — firing now would send the full chapter.
+    if (pendingVerseRef.current || pendingChapterRef.current || isSearchInFlight()) return;
+    if (!selectedChapter) {
+      pendingSendRef.current = null;
+      return;
+    }
+    const chapterOk = p.chapterId === '*' || p.chapterId === selectedChapter.id;
+    const selOk = p.selKey === '*' || p.selKey === selKey(selection);
+    if (!chapterOk || !selOk) {
+      // Settled somewhere else: the operator moved on.
+      pendingSendRef.current = null;
+      return;
+    }
+    if (!chapterReady) return;
+    if (
+      p.bibles &&
+      !(p.bibles.length === selectedBibleIds.length && p.bibles.every((id, i) => id === selectedBibleIds[i]))
+    ) {
+      return;
+    }
+    pendingSendRef.current = null;
+    if (p.kind === 'display') {
+      handleSendToDisplay();
+    } else {
+      mirrorSendRef.current = p.kind === 'mirror';
+      handleSendToWall();
+    }
+  }, [chapterReady, selectedChapter, selection, selectedBibleIds, pendingTick, handleSendToWall, handleSendToDisplay]);
 
   const handleClearWall = useCallback(async () => {
+    // A queued send must not put text back up after the operator cleared.
+    pendingSendRef.current = null;
     displayChannelRef.current?.postMessage({ type: 'scripture-clear' });
     try {
       await liveApi.clearScripture();
       setWallState('idle');
     } catch (err) {
       console.error('Error clearing wall:', err);
+      // Leave wallState alone: the wall may still be showing text.
+      setError('Could not clear the wall output. Check the backend connection.');
     }
   }, []);
 
@@ -696,10 +1093,6 @@ export default function BiblePanel() {
   );
   const selectedVerse =
     selection && selection.start === selection.end ? String(selection.start) : null;
-
-  // Cross-boundary stepping: which verse/chapter to land on once data loads.
-  const pendingVerseRef = useRef<'first' | 'last' | null>(null);
-  const pendingChapterRef = useRef<'first' | 'last' | null>(null);
 
   // Consume pending chapter once the new book's chapter list arrives.
   useEffect(() => {
@@ -726,6 +1119,7 @@ export default function BiblePanel() {
       const next = idx + dir;
       if (next >= 0 && next < verseNumbers.length) {
         const n = Number(verseNumbers[next]);
+        navGenRef.current++;
         setSelection({ start: n, end: n });
         return;
       }
@@ -734,6 +1128,7 @@ export default function BiblePanel() {
       const cIdx = chapters.findIndex((c) => c.id === selectedChapter.id);
       const nextChapter = chapters[cIdx + dir];
       if (nextChapter) {
+        navGenRef.current++;
         pendingVerseRef.current = dir === 1 ? 'first' : 'last';
         setSelection(null);
         setSelectedChapter(nextChapter);
@@ -744,6 +1139,7 @@ export default function BiblePanel() {
       const bIdx = books.findIndex((b) => b.id === selectedBook.id);
       const nextBook = books[bIdx + dir];
       if (!nextBook) return;
+      navGenRef.current++;
       pendingChapterRef.current = dir === 1 ? 'first' : 'last';
       pendingVerseRef.current = dir === 1 ? 'first' : 'last';
       setSelection(null);
@@ -838,118 +1234,251 @@ export default function BiblePanel() {
 
       </div>
 
-      {/* Pinned + recent passages */}
-      {(pins.length > 0 || recents.length > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {pins.map((pin) => (
-            <span
-              key={`pin-${pin.ref}`}
-              className="group flex items-center rounded-full bg-accent/10 border border-accent/40 overflow-hidden"
-            >
-              <button
-                onClick={() => openPin(pin)}
-                title={`Open ${pin.ref}`}
-                className="h-7 pl-2.5 pr-1.5 flex items-center gap-1.5 text-accent-hover hover:text-ink cursor-pointer transition-colors duration-150 text-xs font-medium"
-              >
-                <PinIcon className="w-3 h-3" />
-                {pin.ref}
-              </button>
-              <button
-                onClick={() => togglePin(pin.ref)}
-                title="Unpin"
-                aria-label={`Unpin ${pin.ref}`}
-                className="h-7 pr-2 pl-0.5 flex items-center text-accent-hover/50 hover:text-danger cursor-pointer transition-colors duration-150"
-              >
-                <XIcon className="w-3 h-3" />
-              </button>
-            </span>
-          ))}
-          {pins.length > 0 && recents.filter((r) => !pins.some((p) => p.ref === r)).length > 0 && (
-            <span className="w-px h-4 bg-edge mx-0.5" aria-hidden />
-          )}
-          {recents
-            .filter((r) => !pins.some((p) => p.ref === r))
-            .map((ref) => (
-              <button
-                key={`recent-${ref}`}
-                onClick={() => handleReferenceSearch(ref)}
-                title={`Open ${ref} (recently viewed)`}
-                className="h-7 px-2.5 rounded-full bg-surface-input border border-edge text-ink-dim hover:text-accent-hover hover:border-accent/50 cursor-pointer transition-colors duration-150 text-xs"
-              >
-                {ref}
-              </button>
-            ))}
-        </div>
-      )}
-
-      {/* Output actions — visible once a chapter is open, gated by role */}
-      {selectedChapter && (
-        <div className="flex items-center justify-end gap-2">
-          {(role === 'media' || role === 'admin') && (
-            <button
-              onClick={handleSendToWall}
-              disabled={wallState === 'sending'}
-              title="Send the current passage to the Resolume wall (and display)"
-              className="h-9 px-4 flex items-center gap-2 rounded-lg bg-accent-deep hover:bg-accent text-on-accent font-semibold text-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-accent/10"
-            >
-              {wallState === 'live' && <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulse" />}
-              {wallState === 'sending' ? 'Sending…' : wallState === 'live' ? 'Update Wall' : 'Send to Wall'}
-            </button>
-          )}
-          {(role === 'worship' || role === 'admin') && (
-            <button
-              onClick={handleSendToDisplay}
-              title="Send the current passage to the display window"
-              className="h-9 px-4 rounded-lg border border-edge-strong text-ink-dim hover:text-ink hover:border-accent cursor-pointer text-sm font-medium"
-            >
-              Send to Display
-            </button>
-          )}
-          {currentReference && (
-            <button
-              onClick={() => togglePin(currentReference)}
-              title={pins.some((p) => p.ref === currentReference) ? `Unpin ${currentReference}` : `Pin ${currentReference} for quick access`}
-              className={`h-9 px-3 flex items-center gap-1.5 rounded-lg border cursor-pointer text-sm transition-colors duration-150 ${
-                pins.some((p) => p.ref === currentReference)
-                  ? 'bg-accent/10 border-accent/40 text-accent-hover'
-                  : 'border-edge text-ink-mute hover:text-ink hover:border-accent/50'
-              }`}
-            >
-              <PinIcon className="w-3.5 h-3.5" />
-              {pins.some((p) => p.ref === currentReference) ? 'Pinned' : 'Pin'}
-            </button>
-          )}
-          {(role === 'media' || role === 'admin') && (
-            <button
-              onClick={() => setShowWallLayout((v) => !v)}
-              aria-pressed={showWallLayout}
-              title="Adjust the Resolume wall box blur and size"
-              className={`h-9 px-3 flex items-center gap-1.5 rounded-lg border cursor-pointer text-sm transition-colors duration-150 ${
-                showWallLayout
-                  ? 'bg-accent/10 border-accent/40 text-accent-hover'
-                  : 'border-edge text-ink-mute hover:text-ink hover:border-accent/50'
-              }`}
-            >
-              Wall layout
-            </button>
-          )}
-          <span className="w-px h-5 bg-edge" aria-hidden />
+      {/* Pinned + recent passages (click then Enter sends: data-enter-sends) */}
+      <div data-enter-sends className="flex flex-wrap items-center gap-1.5">
+        {PERMANENT_PINS.map((pin) => (
           <button
-            onClick={handleClearWall}
-            title="Clear scripture from all outputs"
-            className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 cursor-pointer text-sm"
+            key={`permanent-${pin.ref}`}
+            onClick={() => handleReferenceSearch(pin.ref)}
+            title={`Open ${pin.ref}`}
+            className="h-7 px-2.5 flex items-center gap-1.5 rounded-full bg-accent/10 border border-accent/40 text-accent-hover hover:text-ink cursor-pointer transition-colors duration-150 text-xs font-medium"
           >
-            Clear
+            <PinIcon className="w-3 h-3" />
+            {pin.label}
+            <span className="text-accent-hover/60 font-normal">{pin.ref}</span>
+          </button>
+        ))}
+        {pins.filter((pin) => !PERMANENT_PINS.some((p) => p.ref === pin.ref)).map((pin) => (
+          <span
+            key={`pin-${pin.ref}`}
+            className="group flex items-center rounded-full bg-accent/10 border border-accent/40 overflow-hidden"
+          >
+            <button
+              onClick={() => openPin(pin)}
+              title={`Open ${pin.ref}`}
+              className="h-7 pl-2.5 pr-1.5 flex items-center gap-1.5 text-accent-hover hover:text-ink cursor-pointer transition-colors duration-150 text-xs font-medium"
+            >
+              <PinIcon className="w-3 h-3" />
+              {pin.ref}
+            </button>
+            <button
+              onClick={() => togglePin(pin.ref)}
+              title="Unpin"
+              aria-label={`Unpin ${pin.ref}`}
+              className="h-7 pr-2 pl-0.5 flex items-center text-accent-hover/50 hover:text-danger cursor-pointer transition-colors duration-150"
+            >
+              <XIcon className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+        {recents.filter((r) => !isPinned(r)).length > 0 && (
+          <span className="w-px h-4 bg-edge mx-0.5" aria-hidden />
+        )}
+        {recents
+          .filter((r) => !isPinned(r))
+          .map((ref) => (
+            <button
+              key={`recent-${ref}`}
+              onClick={() => handleReferenceSearch(ref)}
+              title={`Open ${ref} (recently viewed)`}
+              className="h-7 px-2.5 rounded-full bg-surface-input border border-edge text-ink-dim hover:text-accent-hover hover:border-accent/50 cursor-pointer transition-colors duration-150 text-xs"
+            >
+              {ref}
+            </button>
+          ))}
+      </div>
+
+      {/* Output actions — sends need an open chapter; Clear is always
+          reachable so the wall can be blanked from anywhere. Gated by role. */}
+      <div className="flex items-center justify-end gap-2">
+        {selectedChapter && (role === 'media' || role === 'admin') && (
+          <button
+            onClick={handleSendToWall}
+            disabled={wallState === 'sending'}
+            title="Send the current passage to the Resolume wall (and display)"
+            className="h-9 px-4 flex items-center gap-2 rounded-lg bg-accent-deep hover:bg-accent text-on-accent font-semibold text-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-accent/10"
+          >
+            {wallState === 'live' && <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulse" />}
+            {wallState === 'sending' ? 'Sending…' : wallState === 'live' ? 'Update Wall' : 'Send to Wall'}
+          </button>
+        )}
+        {selectedChapter && (role === 'worship' || role === 'admin') && (
+          <button
+            onClick={handleSendToDisplay}
+            title="Send the current passage to the display window"
+            className="h-9 px-4 rounded-lg border border-edge-strong text-ink-dim hover:text-ink hover:border-accent cursor-pointer text-sm font-medium"
+          >
+            Send to Display
+          </button>
+        )}
+        {selectedChapter && currentReference && !PERMANENT_PINS.some((p) => p.ref === currentReference) && (
+          <button
+            onClick={() => togglePin(currentReference)}
+            title={pins.some((p) => p.ref === currentReference) ? `Unpin ${currentReference}` : `Pin ${currentReference} for quick access`}
+            className={`h-9 px-3 flex items-center gap-1.5 rounded-lg border cursor-pointer text-sm transition-colors duration-150 ${
+              pins.some((p) => p.ref === currentReference)
+                ? 'bg-accent/10 border-accent/40 text-accent-hover'
+                : 'border-edge text-ink-mute hover:text-ink hover:border-accent/50'
+            }`}
+          >
+            <PinIcon className="w-3.5 h-3.5" />
+            {pins.some((p) => p.ref === currentReference) ? 'Pinned' : 'Pin'}
+          </button>
+        )}
+        {(role === 'media' || role === 'admin') && (
+          <button
+            onClick={() => setShowWallLayout((v) => !v)}
+            aria-pressed={showWallLayout}
+            title="Adjust the Resolume wall box blur and size"
+            className={`h-9 px-3 flex items-center gap-1.5 rounded-lg border cursor-pointer text-sm transition-colors duration-150 ${
+              showWallLayout
+                ? 'bg-accent/10 border-accent/40 text-accent-hover'
+                : 'border-edge text-ink-mute hover:text-ink hover:border-accent/50'
+            }`}
+          >
+            Wall layout
+          </button>
+        )}
+        {(selectedChapter || role === 'media' || role === 'admin') && (
+          <span className="w-px h-5 bg-edge" aria-hidden />
+        )}
+        <button
+          onClick={handleClearWall}
+          title="Clear scripture from all outputs"
+          className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 cursor-pointer text-sm"
+        >
+          Clear
+        </button>
+      </div>
+
+      {/* Errors — visible wherever the operator is, until dismissed */}
+      {error && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="fade-swap flex items-start gap-3 bg-danger/10 border border-danger/30 rounded-lg px-4 py-2.5"
+        >
+          <p className="text-danger text-sm flex-1">{error}</p>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            aria-label="Dismiss error"
+            title="Dismiss"
+            className="p-1 rounded-md text-danger/70 hover:text-danger hover:bg-danger/10 cursor-pointer transition-colors duration-150"
+          >
+            <XIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
       {/* Wall layout controls (media/admin) — live-adjust the Resolume boxes */}
-      {(role === 'media' || role === 'admin') && showWallLayout && (
+      {showWallPanel && (
         <div className="fade-swap bg-surface-raised border border-edge rounded-xl p-4 space-y-4">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-ink-mute uppercase tracking-wider">Resolume wall boxes</div>
             <span className="text-xs text-ink-mute">{savingCfg ? 'Saving…' : 'Applies live'}</span>
+          </div>
+          <div className="space-y-2">
+            <div className="text-sm text-ink-dim">Presets</div>
+            {wallPresets.length === 0 ? (
+              <p className="text-xs text-ink-mute">No presets yet</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {wallPresets.map((p) => {
+                  const active = matchedPreset?.id === p.id;
+                  return (
+                    <span
+                      key={p.id}
+                      className={`inline-flex items-center rounded-lg border overflow-hidden transition-colors duration-150 ${
+                        active
+                          ? 'bg-accent/10 border-accent/40 text-accent-hover'
+                          : 'border-edge text-ink-mute hover:border-accent/50'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => applyPreset(p)}
+                        className={`h-8 text-sm cursor-pointer transition-colors duration-150 ${
+                          p.builtin ? 'px-3' : 'pl-3 pr-1'
+                        } ${active ? '' : 'hover:text-ink'}`}
+                      >
+                        {p.name}
+                      </button>
+                      {!p.builtin && (
+                        <button
+                          type="button"
+                          aria-label={`Delete ${p.name}`}
+                          title={`Delete ${p.name}`}
+                          onClick={() => handleDeletePreset(p)}
+                          className="h-8 w-7 min-w-6 min-h-6 flex items-center justify-center text-ink-mute hover:text-danger cursor-pointer transition-colors duration-150"
+                        >
+                          <XIcon className="w-3 h-3" />
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                maxLength={60}
+                value={presetName}
+                placeholder="Save as preset…"
+                onChange={(e) => setPresetName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSavePreset(); } }}
+                className="w-44 px-2.5 py-1.5 bg-surface-input text-ink text-sm border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleSavePreset}
+                disabled={!presetName.trim()}
+                className="h-8 px-3 rounded-lg border border-edge text-sm text-ink-mute hover:text-ink hover:border-accent/50 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+              {selectedPreset && !presetMatches(selectedPreset, outputCfg) && (
+                <button
+                  type="button"
+                  onClick={handleUpdatePreset}
+                  className="text-xs text-accent hover:text-accent-hover cursor-pointer transition-colors duration-150"
+                >
+                  Update {selectedPreset.name}
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-ink-mute">Saving an existing name overwrites it.</p>
+          </div>
+          <div>
+            <div className="mb-1.5 text-sm text-ink-dim">Layout</div>
+            <div className="inline-flex rounded-lg border border-edge overflow-hidden" role="group" aria-label="Wall layout">
+              {([
+                { value: 'imag', label: 'With IMAG' },
+                { value: 'fullscreen', label: 'Fullscreen' },
+              ] as { value: WallLayout; label: string }[]).map((opt) => {
+                const active = outputCfg.layout === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => { if (!active) saveOutputCfg({ ...outputCfg, layout: opt.value }); }}
+                    className={`px-3 py-1.5 text-sm cursor-pointer transition-colors duration-150 ${
+                      active ? 'bg-accent/10 text-accent-hover' : 'text-ink-mute hover:text-ink'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-ink-mute mt-1.5">
+              {outputCfg.layout === 'fullscreen'
+                ? 'Boxes split the full wall width with a small gap in the middle.'
+                : 'Boxes sit either side, leaving the centre free for the IMAG camera.'}
+            </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             <label className="block">
@@ -957,26 +1486,28 @@ export default function BiblePanel() {
               <div className="flex items-center gap-2">
                 <input
                   type="number" min={0} max={6000} step={10}
-                  value={outputCfg.box_w_px}
-                  onChange={(e) => saveOutputCfg({ ...outputCfg, box_w_px: Math.max(0, Number(e.target.value) || 0) })}
+                  {...boxInputProps('box_w_px')}
                   className="w-24 px-2.5 py-1.5 bg-surface-input text-ink text-sm border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none"
                 />
                 <span className="text-xs text-ink-mute">px {outputCfg.box_w_px === 0 && '(auto)'}</span>
               </div>
-              <p className="text-xs text-ink-mute mt-1">How far each box extends in from its screen edge.</p>
+              <p className="text-xs text-ink-mute mt-1">
+                {outputCfg.layout === 'fullscreen'
+                  ? '0 = auto (half the wall each). Each box extends in from its screen edge.'
+                  : 'How far each box extends in from its screen edge.'}
+              </p>
             </label>
             <label className="block">
               <div className="mb-1.5 text-sm text-ink-dim">Box height</div>
               <div className="flex items-center gap-2">
                 <input
                   type="number" min={0} max={6000} step={10}
-                  value={outputCfg.box_h_px}
-                  onChange={(e) => saveOutputCfg({ ...outputCfg, box_h_px: Math.max(0, Number(e.target.value) || 0) })}
+                  {...boxInputProps('box_h_px')}
                   className="w-24 px-2.5 py-1.5 bg-surface-input text-ink text-sm border border-edge rounded-lg hover:border-edge-strong focus:border-accent focus:outline-none"
                 />
                 <span className="text-xs text-ink-mute">px {outputCfg.box_h_px === 0 && '(auto)'}</span>
               </div>
-              <p className="text-xs text-ink-mute mt-1">Box height, centered in the IMAG band.</p>
+              <p className="text-xs text-ink-mute mt-1">Box height, starting at the top of the IMAG band.</p>
             </label>
             <label className="block">
               <div className="flex items-center justify-between mb-1.5">
@@ -986,7 +1517,7 @@ export default function BiblePanel() {
               <input
                 type="range" min={0.5} max={1} step={0.05}
                 value={Math.min(1, outputCfg.text_scale)}
-                onChange={(e) => saveOutputCfg({ ...outputCfg, text_scale: Number(e.target.value) })}
+                onChange={(e) => queueOutputCfgSave({ ...outputCfg, text_scale: Number(e.target.value) })}
                 className="w-full accent-accent cursor-pointer"
               />
               <p className="text-xs text-ink-mute mt-1">
@@ -1002,14 +1533,14 @@ export default function BiblePanel() {
               <input
                 type="range" min={0} max={40} step={1}
                 value={outputCfg.blur}
-                onChange={(e) => saveOutputCfg({ ...outputCfg, blur: Number(e.target.value) })}
+                onChange={(e) => queueOutputCfgSave({ ...outputCfg, blur: Number(e.target.value) })}
                 className="w-full accent-accent cursor-pointer"
               />
               <p className="text-xs text-ink-mute mt-1">Frosts the video behind the box (may not render in OBS&apos;s browser source).</p>
             </label>
           </div>
           <button
-            onClick={() => saveOutputCfg({ blur: 14, box_w_px: 0, box_h_px: 0, text_scale: 1 })}
+            onClick={() => saveOutputCfg({ blur: 14, box_w_px: 0, box_h_px: 0, text_scale: 1, layout: 'imag' })}
             className="text-xs text-ink-mute hover:text-ink cursor-pointer transition-colors duration-150"
           >
             Reset to defaults
@@ -1130,7 +1661,7 @@ export default function BiblePanel() {
                   <BookOpenIcon className="w-4 h-4 text-accent-hover" />
                   <h2 className="text-sm font-semibold text-ink">Books</h2>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div data-enter-sends className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs text-ink-mute mr-1 hidden sm:inline">Quick jump:</span>
                   {['John 3:16', 'Psalm 23', 'Romans 8:28', '1 Cor 13:4-7'].map((ref) => (
                     <button
@@ -1180,13 +1711,15 @@ export default function BiblePanel() {
           )}
 
           {selectedBook && !selectedChapter && !isLoadingChapters && (
-            <ChapterGrid
-              chapters={chapters}
-              selectedChapterId={null}
-              onSelectChapter={handleSelectChapter}
-              bookName={selectedBook.name}
-              isLoading={isLoadingChapters}
-            />
+            <div data-enter-sends>
+              <ChapterGrid
+                chapters={chapters}
+                selectedChapterId={null}
+                onSelectChapter={handleSelectChapter}
+                bookName={selectedBook.name}
+                isLoading={isLoadingChapters}
+              />
+            </div>
           )}
 
           {isLoadingChapters && (
@@ -1199,12 +1732,14 @@ export default function BiblePanel() {
           {selectedChapter && (
             <>
               {!isLoadingContent && verseNumbers.length > 0 && (
-                <VerseGrid
-                  verseNumbers={verseNumbers}
-                  selectedVerse={selectedVerse}
-                  onSelectVerse={handleSelectVerse}
-                  onShowFullChapter={handleShowFullChapter}
-                />
+                <div data-enter-sends>
+                  <VerseGrid
+                    verseNumbers={verseNumbers}
+                    selectedVerse={selectedVerse}
+                    onSelectVerse={handleSelectVerse}
+                    onShowFullChapter={handleShowFullChapter}
+                  />
+                </div>
               )}
               <div className="overflow-x-auto">
                 <div
@@ -1261,12 +1796,6 @@ export default function BiblePanel() {
                 </div>
               </div>
             </>
-          )}
-
-          {error && !selectedChapter && (
-            <div className="bg-danger/10 border border-danger/30 rounded-lg p-4 mt-4">
-              <p className="text-danger text-sm">{error}</p>
-            </div>
           )}
         </div>
       </div>

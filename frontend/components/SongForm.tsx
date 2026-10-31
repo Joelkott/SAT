@@ -9,6 +9,8 @@ interface SongFormProps {
   onSubmit: () => void;
   onCancel: () => void;
   onDelete?: (songId: string) => Promise<boolean>;
+  // Receives the dirty-checked close so the hosting modal's X uses it too.
+  requestCloseRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 const LANGUAGES = ['english', 'malayalam', 'hindi', 'tamil', 'telugu', 'kannada'];
@@ -18,7 +20,7 @@ const inputClass =
   'hover:border-edge-strong focus:border-accent focus:outline-none placeholder-ink-mute ' +
   'transition-colors duration-150';
 
-export default function SongForm({ song, onSubmit, onCancel, onDelete }: SongFormProps) {
+export default function SongForm({ song, onSubmit, onCancel, onDelete, requestCloseRef }: SongFormProps) {
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
   const [language, setLanguage] = useState('english');
@@ -53,6 +55,30 @@ export default function SongForm({ song, onSubmit, onCancel, onDelete }: SongFor
     if (dirty) setConfirmDiscard(true);
     else onCancel();
   };
+
+  // Expose the dirty-checked close to the host (modal X button).
+  if (requestCloseRef) requestCloseRef.current = handleCancelClick;
+  useEffect(() => {
+    if (!requestCloseRef) return;
+    return () => { requestCloseRef.current = null; };
+  }, [requestCloseRef]);
+
+  // Escape: back out of an open confirm first (= keep editing), otherwise
+  // close through the unsaved-changes check. Ignored while saving/deleting.
+  const escapeRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  escapeRef.current = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    if (loading || deleting) return;
+    e.preventDefault();
+    if (confirmDelete) setConfirmDelete(false);
+    else if (confirmDiscard) setConfirmDiscard(false);
+    else handleCancelClick();
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => escapeRef.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const handleDeleteConfirmed = async () => {
     if (!song || !onDelete) return;

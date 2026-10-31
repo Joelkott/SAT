@@ -257,6 +257,10 @@ func main() {
 	liveGroup.Post("/suggestion", h.SetLiveSuggestion)
 	liveGroup.Get("/output-config", h.GetOutputConfig)
 	liveGroup.Put("/output-config", h.SetOutputConfig)
+	// Saved wall layout presets (media/admin write)
+	liveGroup.Get("/wall-presets", h.ListWallPresets)
+	liveGroup.Post("/wall-presets", h.SaveWallPreset)
+	liveGroup.Delete("/wall-presets/:id", h.DeleteWallPreset)
 
 	// Site-wide display preferences (line spacing etc.) — any signed-in role
 	api.Get("/display-config", h.GetDisplayConfig)

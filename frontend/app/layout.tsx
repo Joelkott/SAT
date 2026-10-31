@@ -13,6 +13,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        {/* Fetch the Indic fonts up front instead of on the first verse that
+            needs them, so Malayalam/Hindi never flash in a fallback font. */}
+        <link rel="preload" href="/fonts/MAL-Anjali.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/mangal.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />
+      </head>
       <body className="antialiased">
         {children}
       </body>

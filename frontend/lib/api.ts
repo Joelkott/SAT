@@ -545,9 +545,23 @@ export const liveApi = {
     return response.data;
   },
 
-  setOutputConfig: async (cfg: { blur: number; box_w_px: number; box_h_px: number; text_scale: number }): Promise<OutputConfig> => {
+  setOutputConfig: async (cfg: { blur: number; box_w_px: number; box_h_px: number; text_scale: number; layout: WallLayout }): Promise<OutputConfig> => {
     const response = await api.put<OutputConfig>('/live/output-config', cfg);
     return response.data;
+  },
+
+  getWallPresets: async (): Promise<WallPreset[]> => {
+    const response = await api.get<WallPreset[]>('/live/wall-presets');
+    return response.data ?? [];
+  },
+
+  saveWallPreset: async (p: { name: string; layout: WallLayout; blur: number; box_w_px: number; box_h_px: number; text_scale: number }): Promise<WallPreset> => {
+    const response = await api.post<WallPreset>('/live/wall-presets', p);
+    return response.data;
+  },
+
+  deleteWallPreset: async (id: number): Promise<void> => {
+    await api.delete(`/live/wall-presets/${id}`);
   },
 };
 
@@ -570,12 +584,30 @@ export const displayConfigApi = {
 };
 
 // Resolume/OBS wall-output layout, set by media/admin, read by /output/bible.
+// Wall output layout preset.
+export type WallLayout = 'imag' | 'fullscreen';
+
 export interface OutputConfig {
   blur: number;        // backdrop blur radius in px
-  box_w_px: number;    // box width in px; 0 = fill the side panel
+  box_w_px: number;    // box width in px; 0 = auto (side panel in IMAG, half the wall in fullscreen)
   box_h_px: number;    // box height in px; 0 = fill the IMAG band
   text_scale: number;  // 0.5..2.0 multiplier on auto-fitted text size
+  layout: WallLayout;  // 'imag' = boxes flank a free IMAG centre; 'fullscreen' = boxes split the full width
   updated_at: number;
+}
+
+// Named, saved snapshot of the wall-output layout (server-side, shared by all machines).
+export interface WallPreset {
+  id: number;
+  name: string;
+  layout: WallLayout;
+  blur: number;
+  box_w_px: number;
+  box_h_px: number;
+  text_scale: number;
+  builtin: boolean;   // seeded preset; cannot be deleted
+  created_at: string;
+  updated_at: string;
 }
 
 export default api;
