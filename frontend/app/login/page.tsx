@@ -41,7 +41,10 @@ export default function LoginPage() {
       localStorage.setItem('sat-token', res.data.token);
       localStorage.setItem('sat-role', res.data.role);
       localStorage.setItem('sat-last-team', username);
-      window.location.href = '/';
+      // Only same-site paths: "/viewer" ok; "//evil.com", "/\evil.com" and "https://…" are not
+      // (browsers treat a backslash after the leading slash like a second slash).
+      const next = new URLSearchParams(window.location.search).get('next') || '';
+      window.location.href = next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/';
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Login failed — check the connection.');
     } finally {
