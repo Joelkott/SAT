@@ -6,8 +6,9 @@ import { useEffect, useState } from 'react';
 interface SongFullScreenProps {
   song: Song;
   onClose: () => void;
-  onEdit: (song: Song) => void;
-  onDelete: (songId: string) => Promise<boolean>;
+  // Omitted for the view-only guest account: hides the Edit/Delete buttons.
+  onEdit?: (song: Song) => void;
+  onDelete?: (songId: string) => Promise<boolean>;
 }
 
 export default function SongFullScreen({ song, onClose, onEdit, onDelete }: SongFullScreenProps) {
@@ -91,12 +92,15 @@ export default function SongFullScreen({ song, onClose, onEdit, onDelete }: Song
             </button>
           </div>
 
+          {onEdit && (
           <button
             onClick={() => onEdit(song)}
             className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
           >
             Edit
           </button>
+          )}
+          {onDelete && (
           <button
             onClick={async () => {
               const deleted = await onDelete(song.id);
@@ -108,6 +112,7 @@ export default function SongFullScreen({ song, onClose, onEdit, onDelete }: Song
           >
             Delete
           </button>
+          )}
           <button
             onClick={onClose}
             className="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors"

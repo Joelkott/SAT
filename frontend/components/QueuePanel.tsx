@@ -29,6 +29,9 @@ interface QueuePanelProps {
   onSendToLive?: (song: Song) => void;
   onQueueChange?: () => void;
   refreshToken?: number;
+  // View-only guest: no drag reorder, remove or clear (pass onSendToLive
+  // undefined too). Browsing, preview and Copy setlist still work.
+  readOnly?: boolean;
 }
 
 interface SortableItemProps {
@@ -37,9 +40,10 @@ interface SortableItemProps {
   onDelete: (id: number) => void;
   onSelect?: (song: Song) => void;
   onSendToLive?: (song: Song) => void;
+  readOnly?: boolean;
 }
 
-function SortableItem({ item, index, onDelete, onSelect, onSendToLive }: SortableItemProps) {
+function SortableItem({ item, index, onDelete, onSelect, onSendToLive, readOnly }: SortableItemProps) {
   const {
     attributes,
     listeners,
@@ -47,7 +51,7 @@ function SortableItem({ item, index, onDelete, onSelect, onSendToLive }: Sortabl
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.id });
+  } = useSortable({ id: item.id, disabled: readOnly });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -63,16 +67,18 @@ function SortableItem({ item, index, onDelete, onSelect, onSendToLive }: Sortabl
         isDragging ? 'z-50' : ''
       }`}
     >
-      <div
-        {...attributes}
-        {...listeners}
-        className="shrink-0 p-1 cursor-grab active:cursor-grabbing text-ink-mute hover:text-ink-dim"
-        title="Drag to reorder"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
-        </svg>
-      </div>
+      {!readOnly && (
+        <div
+          {...attributes}
+          {...listeners}
+          className="shrink-0 p-1 cursor-grab active:cursor-grabbing text-ink-mute hover:text-ink-dim"
+          title="Drag to reorder"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+          </svg>
+        </div>
+      )}
 
       <span className="shrink-0 w-5 text-center text-xs text-ink-mute tabular-nums">
         {index + 1}
@@ -110,20 +116,22 @@ function SortableItem({ item, index, onDelete, onSelect, onSendToLive }: Sortabl
             <PlayIcon className="w-3.5 h-3.5" />
           </button>
         )}
-        <button
-          onClick={() => onDelete(item.id)}
-          className="w-7 h-7 flex items-center justify-center rounded-md text-ink-mute hover:text-danger hover:bg-danger/10 cursor-pointer transition-colors duration-150"
-          aria-label="Remove from queue"
-          title="Remove from queue"
-        >
-          <XIcon className="w-3.5 h-3.5" />
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => onDelete(item.id)}
+            className="w-7 h-7 flex items-center justify-center rounded-md text-ink-mute hover:text-danger hover:bg-danger/10 cursor-pointer transition-colors duration-150"
+            aria-label="Remove from queue"
+            title="Remove from queue"
+          >
+            <XIcon className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLive, onQueueChange, refreshToken }: QueuePanelProps) {
+export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLive, onQueueChange, refreshToken, readOnly = false }: QueuePanelProps) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -177,7 +185,7 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
 
-    if (!over || active.id === over.id) {
+    if (readOnly || !over || active.id === over.id) {
       return;
     }
 
@@ -204,6 +212,7 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
   };
 
   const handleDelete = async (id: number) => {
+    if (readOnly) return;
     try {
       setError(null);
       await queueApi.remove(id);
@@ -215,6 +224,7 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
   };
 
   const handleClearAll = async () => {
+    if (readOnly) return;
     try {
       setLoading(true);
       setError(null);
@@ -336,6 +346,7 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
                       onDelete={handleDelete}
                       onSelect={handleSongSelect}
                       onSendToLive={onSendToLive}
+                      readOnly={readOnly}
                     />
                   ))}
                 </div>
@@ -345,7 +356,7 @@ export default function QueuePanel({ isOpen, onToggle, onSongSelect, onSendToLiv
         </div>
 
         {/* Footer */}
-        {queue.length > 0 && (
+        {queue.length > 0 && !readOnly && (
           <div className="p-3 border-t border-edge">
             {confirmClear ? (
               <div className="space-y-2 fade-swap">

@@ -11,6 +11,7 @@ import { PlusIcon, MinusIcon, MusicIcon, MonitorIcon, RefreshIcon, XIcon, Pencil
 import { FormattedLyrics, LyricBlocks, toggleBoldInTextarea, useLyricSpacing, INDIC_EXTRA, stripBold } from '@/components/lyricsFormat';
 import { useScrollMemory } from '@/lib/scrollMemory';
 import { copyText } from '@/lib/clipboard';
+import { useRole, isGuest } from '@/lib/role';
 import {
   DEFAULT_ALIGN,
   DEFAULT_FONT,
@@ -52,11 +53,12 @@ export default function SongsPanel() {
     return () => { cancelled = true; };
   }, [queueRefresh]);
   const [hoverSong, setHoverSong] = useState<Song | null>(null);
-  const [role, setRoleState] = useState('');
-  useEffect(() => { setRoleState(localStorage.getItem('sat-role') || ''); }, []);
-  // guest is worship minus ProPresenter: the backend 403s /api/propresenter/*,
-  // so the UI must neither show the card (see the role check on the card below)
-  // nor make the calls (see the guest early-returns in the pp handlers).
+  const role = useRole();
+  // guest is view-only (see lib/role.ts): the backend 403s every write and all
+  // of /api/propresenter/*, so the UI hides every write/projection control and
+  // the handlers early-return via isGuest() (which reads localStorage directly,
+  // so it is correct even before the role state settles).
+  const readOnly = role === 'guest';
   const displayChannelRef = useRef<BroadcastChannel | null>(null);
   const [leftWidth, setLeftWidth] = useState(0.6);
   const [isDragging, setIsDragging] = useState(false);
@@ -101,6 +103,7 @@ export default function SongsPanel() {
   const [inlineEditSong, setInlineEditSong] = useState<Song | null>(null);
 
   const startInlineEdit = () => {
+    if (isGuest()) return;
     const song = hoverSong || selectedSong;
     if (!song) return;
     setInlineEditSong(song);
@@ -151,9 +154,9 @@ export default function SongsPanel() {
 
   // Check ProPresenter connection status
   const checkProPresenterStatus = async () => {
-    // Read localStorage rather than the `role` state: the mount effect calls
-    // this before the role state has settled.
-    if (typeof window !== 'undefined' && localStorage.getItem('sat-role') === 'guest') {
+    // isGuest() reads localStorage rather than the `role` state: the mount
+    // effect calls this before the role state has settled.
+    if (isGuest()) {
       setPpStatus({ enabled: false, connected: false, message: 'Not available for this account' });
       return;
     }
@@ -239,6 +242,7 @@ export default function SongsPanel() {
   // Ctrl+Shift+L (Cmd+Shift+L on Mac) sends the previewed song to live
   const sendPreviewToLiveRef = useRef<() => void>(() => {});
   sendPreviewToLiveRef.current = () => {
+    if (isGuest()) return;
     const song = hoverSong || selectedSong;
     if (song) handleSendToLive(song);
   };
@@ -347,6 +351,8 @@ export default function SongsPanel() {
   }, [recordOpen]);
 
   const handleSendToLive = useCallback(async (song: Song) => {
+    // guest is view-only: never projects anything.
+    if (isGuest()) return;
     recordOpen(song.id);
     setLiveSong(song);
     setSelectedSong(song);
@@ -379,8 +385,7 @@ export default function SongsPanel() {
     }
 
     // Sync with ProPresenter if enabled and connected (never for guest)
-    const isGuest = typeof window !== 'undefined' && localStorage.getItem('sat-role') === 'guest';
-    if (!isGuest && ppSyncEnabled && ppStatus?.connected) {
+    if (!isGuest() && ppSyncEnabled && ppStatus?.connected) {
       setPpSyncing(true);
       try {
         await propresenterApi.sendToQueue(song.id, song.title);
@@ -402,7 +407,7 @@ export default function SongsPanel() {
   const runReconcile = useCallback(async (silent: boolean) => {
     // Only reachable from the (hidden) ProPresenter card, but guard anyway —
     // the endpoint 403s for guest.
-    if (typeof window !== 'undefined' && localStorage.getItem('sat-role') === 'guest') return;
+    if (isGuest()) return;
     setReconciling(true);
     if (!silent) setReconcileMsg('');
     try {
@@ -436,6 +441,7 @@ export default function SongsPanel() {
   }, [actionError]);
 
   const handleAddToQueue = useCallback(async (song: Song) => {
+    if (isGuest()) return;
     try {
       await queueApi.add(song.id);
       setQueueRefresh((n) => n + 1);
@@ -446,17 +452,20 @@ export default function SongsPanel() {
   }, []);
 
   const handleCreateNew = () => {
+    if (isGuest()) return;
     setEditingSong(null);
     setShowForm(true);
   };
 
   const handleEdit = useCallback((song: Song) => {
+    if (isGuest()) return;
     setEditingSong(song);
     setShowForm(true);
   }, []);
 
   // Deletion is confirmed in the UI that calls this (no browser popups).
   const handleDelete = async (songId: string) => {
+    if (isGuest()) return false;
     try {
       await songsApi.delete(songId);
       await loadSongs();
@@ -540,6 +549,7 @@ export default function SongsPanel() {
   // Clear the live display (black screen, like Bible Clear). The preview
   // (selected/hover song) is left alone so the operator keeps their place.
   const handleClearLive = () => {
+    if (isGuest()) return;
     setLiveSong(null);
     localStorage.removeItem('lyrics-display-current');
     displayChannelRef.current?.postMessage({ type: 'clear', blank: true });
@@ -555,12 +565,12 @@ export default function SongsPanel() {
         <SongFullScreen
           song={selectedSong}
           onClose={() => setIsFullScreen(false)}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
+          onEdit={readOnly ? undefined : handleEdit}
+          onDelete={readOnly ? undefined : handleDelete}
         />
       )}
 
-      {showForm && (
+      {showForm && !readOnly && (
         <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-start justify-center p-6 overflow-y-auto">
           <div className="bg-surface-raised rounded-xl border border-edge shadow-2xl w-full max-w-3xl p-6">
             <div className="flex justify-between items-center mb-4">
@@ -606,6 +616,8 @@ export default function SongsPanel() {
                 </span>
               </div>
               <div className="flex gap-2 shrink-0">
+                {!readOnly && (
+                <>
                 <button
                   onClick={() => {
                     setEditingSong(previewSong);
@@ -622,6 +634,8 @@ export default function SongsPanel() {
                 >
                   Send to Live
                 </button>
+                </>
+                )}
                 <button
                   onClick={() => {
                     setShowPreviewModal(false);
@@ -658,7 +672,8 @@ export default function SongsPanel() {
               isOpen={queueOpen}
               onToggle={() => setQueueOpen(false)}
               onSongSelect={(song) => handleSelectSong(song)}
-              onSendToLive={handleSendToLive}
+              onSendToLive={readOnly ? undefined : handleSendToLive}
+              readOnly={readOnly}
               refreshToken={queueRefresh}
             />
           </div>
@@ -689,14 +704,16 @@ export default function SongsPanel() {
               </span>
             )}
           </button>
-          <button
-            onClick={handleCreateNew}
-            aria-label="Add new song"
-            title="Add new song"
-            className="shrink-0 h-[46px] w-[46px] flex items-center justify-center rounded-lg bg-accent-deep hover:bg-accent text-on-accent cursor-pointer transition-colors duration-150"
-          >
-            <PlusIcon className="w-5 h-5" />
-          </button>
+          {!readOnly && (
+            <button
+              onClick={handleCreateNew}
+              aria-label="Add new song"
+              title="Add new song"
+              className="shrink-0 h-[46px] w-[46px] flex items-center justify-center rounded-lg bg-accent-deep hover:bg-accent text-on-accent cursor-pointer transition-colors duration-150"
+            >
+              <PlusIcon className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {searchResults && (
@@ -738,9 +755,9 @@ export default function SongsPanel() {
             <SongList
               songs={displaySongs}
               onSelectSong={handleSelectSong}
-              onEdit={handleEdit}
-              onSendToLive={handleSendToLive}
-              onAddToQueue={handleAddToQueue}
+              onEdit={readOnly ? undefined : handleEdit}
+              onSendToLive={readOnly ? undefined : handleSendToLive}
+              onAddToQueue={readOnly ? undefined : handleAddToQueue}
               selectedSongId={selectedSong?.id}
               loading={loading}
             />
@@ -846,29 +863,33 @@ export default function SongsPanel() {
                     </span>
                     <ChevronDownIcon className="w-3.5 h-3.5 text-ink-mute" />
                   </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={handleClearLive}
+                      disabled={!liveSong}
+                      title="Clear the live display"
+                      aria-label="Clear live display"
+                      className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              ) : (
+              <div style={{ width: `${liveFrac * 100}%` }} className="mx-auto relative">
+                {!readOnly && (
                   <button
                     type="button"
                     onClick={handleClearLive}
                     disabled={!liveSong}
                     title="Clear the live display"
                     aria-label="Clear live display"
-                    className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="absolute bottom-2 right-11 z-10 h-7 px-2.5 rounded-md bg-black/60 border border-edge text-ink-mute hover:text-danger hover:border-danger/50 text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Clear
                   </button>
-                </div>
-              ) : (
-              <div style={{ width: `${liveFrac * 100}%` }} className="mx-auto relative">
-                <button
-                  type="button"
-                  onClick={handleClearLive}
-                  disabled={!liveSong}
-                  title="Clear the live display"
-                  aria-label="Clear live display"
-                  className="absolute bottom-2 right-11 z-10 h-7 px-2.5 rounded-md bg-black/60 border border-edge text-ink-mute hover:text-danger hover:border-danger/50 text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Clear
-                </button>
+                )}
                 <button
                   onClick={toggleLiveCollapsed}
                   title="Collapse live monitor"
@@ -889,7 +910,7 @@ export default function SongsPanel() {
                       value={zoomLevel}
                       onChange={(z) => {
                         setZoomLevel(z);
-                        displayChannelRef.current?.postMessage({ type: 'zoom', zoomLevel: z });
+                        if (!readOnly) displayChannelRef.current?.postMessage({ type: 'zoom', zoomLevel: z });
                       }}
                     />
                   }
@@ -1012,6 +1033,8 @@ export default function SongsPanel() {
                 scrollScope="preview"
                 overlay={
                   <>
+                    {!readOnly && (
+                    <>
                     <button
                       onClick={() => (hoverSong || selectedSong) && handleSendToLive((hoverSong || selectedSong)!)}
                       className="w-7 h-7 flex items-center justify-center rounded text-ink-dim hover:text-ok cursor-pointer"
@@ -1030,6 +1053,8 @@ export default function SongsPanel() {
                       <PencilIcon className="w-3.5 h-3.5" />
                     </button>
                     <span className="w-px h-4 bg-edge" aria-hidden />
+                    </>
+                    )}
                     <CopyLyricsButton song={hoverSong || selectedSong} />
                     <span className="w-px h-4 bg-edge" aria-hidden />
                     <ZoomControls value={previewZoom} onChange={setPreviewZoom} />

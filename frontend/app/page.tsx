@@ -8,6 +8,7 @@ import EditLogDialog from '@/components/EditLogDialog';
 import DisplaySettingsDialog from '@/components/DisplaySettingsDialog';
 import { MusicIcon, BookOpenIcon, MonitorIcon, XIcon, EyeIcon, EyeOffIcon, HelpCircleIcon, SlidersIcon } from '@/components/icons';
 import api from '@/lib/api';
+import { getRole, type Role } from '@/lib/role';
 
 type Tab = 'songs' | 'bible';
 
@@ -19,7 +20,7 @@ const TABS: { id: Tab; label: string; Icon: typeof MusicIcon }[] = [
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('songs');
   const [authed, setAuthed] = useState(false);
-  const [role, setRole] = useState('');
+  const [role, setRole] = useState<Role>('');
   const [showPw, setShowPw] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -27,7 +28,7 @@ export default function Home() {
   const [showDisplaySettings, setShowDisplaySettings] = useState(false);
   useEffect(() => {
     if (!localStorage.getItem('sat-token')) window.location.href = '/login';
-    else { setAuthed(true); setRole(localStorage.getItem('sat-role') || ''); }
+    else { setAuthed(true); setRole(getRole()); }
   }, []);
   if (!authed) return <div className="min-h-screen bg-surface" />;
 
@@ -83,39 +84,43 @@ export default function Home() {
           <div className="flex-1" />
 
           {/* Global actions */}
-          {/* Outputs: role-gated */}
-          <div className="flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5">
-            {(role === 'worship' || role === 'guest' || role === 'admin') && (
-              <button
-                onClick={() => window.open('/display', '_blank', 'noopener,noreferrer')}
-                title="Open the congregation display window"
-                className="flex items-center gap-2 h-8 px-3 rounded-[7px] text-sm font-medium text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
-              >
-                <MonitorIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Display</span>
-              </button>
-            )}
-            {(role === 'media' || role === 'admin') && (
-              <button
-                onClick={() => window.open('/output/bible', '_blank', 'noopener,noreferrer')}
-                title="Open the Resolume/LED-wall capture page"
-                className="flex items-center gap-2 h-8 px-3 rounded-[7px] text-sm font-medium text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
-              >
-                <BookOpenIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Resolume</span>
-              </button>
-            )}
-          </div>
+          {/* Outputs: role-gated (guest is view-only and projects nothing) */}
+          {role !== 'guest' && (
+            <div className="flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5">
+              {(role === 'worship' || role === 'admin') && (
+                <button
+                  onClick={() => window.open('/display', '_blank', 'noopener,noreferrer')}
+                  title="Open the congregation display window"
+                  className="flex items-center gap-2 h-8 px-3 rounded-[7px] text-sm font-medium text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+                >
+                  <MonitorIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Display</span>
+                </button>
+              )}
+              {(role === 'media' || role === 'admin') && (
+                <button
+                  onClick={() => window.open('/output/bible', '_blank', 'noopener,noreferrer')}
+                  title="Open the Resolume/LED-wall capture page"
+                  className="flex items-center gap-2 h-8 px-3 rounded-[7px] text-sm font-medium text-ink-dim hover:text-ink hover:bg-surface-hover cursor-pointer"
+                >
+                  <BookOpenIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Resolume</span>
+                </button>
+              )}
+            </div>
+          )}
 
-          {/* Display settings (site-wide) */}
-          <button
-            onClick={() => setShowDisplaySettings(true)}
-            title="Display settings — line spacing (applies to all devices)"
-            aria-label="Open display settings"
-            className="h-9 w-9 flex items-center justify-center rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer transition-colors duration-150"
-          >
-            <SlidersIcon className="w-4 h-4" />
-          </button>
+          {/* Display settings (site-wide; writes, so hidden for guest) */}
+          {role !== 'guest' && (
+            <button
+              onClick={() => setShowDisplaySettings(true)}
+              title="Display settings — line spacing (applies to all devices)"
+              aria-label="Open display settings"
+              className="h-9 w-9 flex items-center justify-center rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer transition-colors duration-150"
+            >
+              <SlidersIcon className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Help */}
           <button
@@ -138,6 +143,9 @@ export default function Home() {
                 {role.slice(0, 1) || '?'}
               </span>
               <span className="hidden sm:inline">{role}</span>
+              {role === 'guest' && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-sunken border border-edge text-ink-mute normal-case">View only</span>
+              )}
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-11 z-50 w-44 bg-surface-raised border border-edge rounded-xl shadow-2xl p-1.5 fade-swap">
@@ -187,7 +195,7 @@ export default function Home() {
 }
 
 function PasswordManager({ onClose }: { onClose: () => void }) {
-  const [values, setValues] = useState<Record<string, string>>({ admin: '', media: '', worship: '', guest: '' });
+  const [values, setValues] = useState<Record<string, string>>({ admin: '', media: '', worship: '' });
   const [status, setStatus] = useState<Record<string, string>>({});
   const [show, setShow] = useState<Record<string, boolean>>({});
 
@@ -217,7 +225,8 @@ function PasswordManager({ onClose }: { onClose: () => void }) {
         <p className="text-xs text-ink-mute">
           Set a new password for any team account. You only need to remember the admin one.
         </p>
-        {(['admin', 'media', 'worship', 'guest'] as const).map((user) => (
+        {/* guest has no password (passwordless, view-only) */}
+        {(['admin', 'media', 'worship'] as const).map((user) => (
           <div key={user} className="flex items-center gap-2">
             <span className="w-20 text-sm font-medium text-ink-dim capitalize shrink-0">{user}</span>
             <div className="relative flex-1 min-w-0">

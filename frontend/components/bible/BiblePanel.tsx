@@ -26,6 +26,7 @@ import {
 } from '@/components/bible/verseUtils';
 import { normalizeBibleIds } from '@/components/bible/translationGroups';
 import { PlusIcon, XIcon, ChevronRightIcon, BookOpenIcon, PinIcon } from '@/components/icons';
+import { getRole, isGuest } from '@/lib/role';
 
 // Language ids whose scripts need taller line boxes (stacked conjuncts).
 const INDIC_LANGS = new Set(['mal', 'hin', 'tam', 'tel', 'kan']);
@@ -510,12 +511,13 @@ export default function BiblePanel() {
   }, []);
 
   // Team role: media proposes verses, worship gets an accept prompt.
-  // guest is deliberately not in the union — it falls through to the default
-  // 'worship' behaviour, which is exactly what a guest operator should get.
-  const [role, setRole] = useState<'media' | 'worship' | 'admin'>('worship');
+  // guest is view-only (see lib/role.ts): it neither publishes nor listens for
+  // suggestions and sends/clears nothing — browsing, translations, pins and
+  // history still work. Unknown roles keep the old 'worship' fallback.
+  const [role, setRole] = useState<'media' | 'worship' | 'admin' | 'guest'>('worship');
   useEffect(() => {
-    const saved = localStorage.getItem('sat-role');
-    if (saved === 'media' || saved === 'worship' || saved === 'admin') setRole(saved);
+    const saved = getRole();
+    if (saved) setRole(saved);
   }, []);
 
   // Wall-output layout (preset + blur + box size) — media/admin adjustable,
@@ -883,6 +885,7 @@ export default function BiblePanel() {
   const applyMirrorRef = useRef(applyMirror);
   applyMirrorRef.current = applyMirror;
   useEffect(() => {
+    // null for admin and guest — guest never sees suggestion banners.
     const listenFor = role === 'worship' ? 'media' : role === 'media' ? 'worship' : null;
     if (!listenFor) return;
     // Baseline against the SERVER's latest suggestion rather than this
@@ -1024,7 +1027,7 @@ export default function BiblePanel() {
   }, [selectedChapter, selection]);
 
   const handleSendToWall = useCallback(async () => {
-    if (!selectedChapter) return;
+    if (isGuest() || !selectedChapter) return;
     if (!chapterReady || isSearchInFlight()) {
       queuePendingSend('wall');
       return;
@@ -1059,7 +1062,7 @@ export default function BiblePanel() {
   // Send the current selection to the same-machine /display window. When
   // worship takes a verse live, publish it so the media machine can mirror.
   const handleSendToDisplay = useCallback(() => {
-    if (!selectedChapter) return;
+    if (isGuest() || !selectedChapter) return;
     if (!chapterReady || isSearchInFlight()) {
       queuePendingSend('display');
       return;
@@ -1079,7 +1082,8 @@ export default function BiblePanel() {
   // Skipped when a suggestion banner is visible (that handler takes priority)
   // or when no chapter is loaded.
   useEffect(() => {
-    if (suggestion || !selectedChapter) return;
+    // guest is view-only: Enter sends nothing, so don't even listen.
+    if (role === 'guest' || suggestion || !selectedChapter) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Enter') return;
       const tag = (e.target as HTMLElement)?.tagName;
@@ -1141,6 +1145,7 @@ export default function BiblePanel() {
   }, [chapterReady, selectedChapter, selection, selectedBibleIds, pendingTick, handleSendToWall, handleSendToDisplay]);
 
   const handleClearWall = useCallback(async () => {
+    if (isGuest()) return;
     // A queued send must not put text back up after the operator cleared.
     pendingSendRef.current = null;
     lastWallKeyRef.current = null;
@@ -1359,7 +1364,8 @@ export default function BiblePanel() {
       </div>
 
       {/* Output actions — sends need an open chapter; Clear is always
-          reachable so the wall can be blanked from anywhere. Gated by role. */}
+          reachable so the wall can be blanked from anywhere. Gated by role;
+          the view-only guest gets none of them (Pin is local and stays). */}
       <div className="flex items-center justify-end gap-2">
         {selectedChapter && (role === 'media' || role === 'admin') && (
           <button
@@ -1409,16 +1415,18 @@ export default function BiblePanel() {
             Wall layout
           </button>
         )}
-        {(selectedChapter || role === 'media' || role === 'admin') && (
+        {role !== 'guest' && (selectedChapter || role === 'media' || role === 'admin') && (
           <span className="w-px h-5 bg-edge" aria-hidden />
         )}
-        <button
-          onClick={handleClearWall}
-          title="Clear scripture from all outputs"
-          className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 cursor-pointer text-sm"
-        >
-          Clear
-        </button>
+        {role !== 'guest' && (
+          <button
+            onClick={handleClearWall}
+            title="Clear scripture from all outputs"
+            className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 cursor-pointer text-sm"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {/* Errors — visible wherever the operator is, until dismissed */}
