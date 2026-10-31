@@ -18,8 +18,9 @@ import (
 
 // Team-account auth: four roles (admin/media/worship/guest), bcrypt passwords
 // in Postgres, stateless HMAC-signed bearer tokens (no external dependency).
-// guest is worship minus ProPresenter — songs, queue, Bible and the display
-// window, but no control over the presentation software running the service.
+// guest signs in without a password and is strictly read-only: it can browse
+// and search songs and the Bible, but every non-GET/HEAD/OPTIONS request is
+// refused with 403 in Middleware(), and it has no ProPresenter access at all.
 
 type claims struct {
 	Username string `json:"u"`
@@ -72,7 +73,11 @@ func (s *Service) Bootstrap() {
 		pw := os.Getenv("AUTH_" + strings.ToUpper(role) + "_PASSWORD")
 		if pw == "" {
 			pw = "changeme-" + role
-			log.Printf("⚠️  user %q created with DEFAULT password %q — change it!", role, pw)
+			// guest is passwordless (Login ignores its hash), so the default
+			// is meaningless for it — only warn for real accounts.
+			if role != "guest" {
+				log.Printf("⚠️  user %q created with DEFAULT password %q — change it!", role, pw)
+			}
 		}
 		hash, _ := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
 		if _, err := s.db.Exec(`INSERT INTO users (username, password_hash, role) VALUES ($1,$2,$1)`, role, string(hash)); err != nil {
@@ -120,12 +125,17 @@ func (s *Service) Login(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
 	}
+	username := strings.ToLower(strings.TrimSpace(req.Username))
 	var hash, role string
-	err := s.db.QueryRow(`SELECT password_hash, role FROM users WHERE username=$1`, strings.ToLower(strings.TrimSpace(req.Username))).Scan(&hash, &role)
-	if err != nil || bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
+	if err := s.db.QueryRow(`SELECT password_hash, role FROM users WHERE username=$1`, username).Scan(&hash, &role); err != nil {
 		return c.Status(401).JSON(fiber.Map{"error": "Invalid username or password"})
 	}
-	cl := claims{Username: strings.ToLower(strings.TrimSpace(req.Username)), Role: role, Exp: time.Now().Add(30 * 24 * time.Hour).Unix()}
+	// guest is passwordless: it is view-only (Middleware refuses its writes),
+	// so its stored hash is simply ignored. Every other account needs bcrypt.
+	if role != "guest" && bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Invalid username or password"})
+	}
+	cl := claims{Username: username, Role: role, Exp: time.Now().Add(30 * 24 * time.Hour).Unix()}
 	return c.JSON(fiber.Map{"token": s.token(cl), "role": role, "username": cl.Username})
 }
 
@@ -168,8 +178,26 @@ func (s *Service) Middleware() fiber.Handler {
 		c.Locals("claims", cl)
 		c.Locals("role", cl.Role)
 		c.Locals("username", cl.Username)
+		if readOnlyViolation(cl.Role, c.Method()) {
+			return c.Status(403).JSON(fiber.Map{"error": "Guest access is read-only"})
+		}
 		return c.Next()
 	}
+}
+
+// readOnlyViolation reports whether a request must be refused because the
+// role is the view-only guest and the method changes state. This server-side
+// check is the actual guarantee; hiding controls in the UI is only a
+// convenience. Being role-based, it also covers guest tokens issued earlier.
+func readOnlyViolation(role, method string) bool {
+	if role != "guest" {
+		return false
+	}
+	switch strings.ToUpper(method) {
+	case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions:
+		return false
+	}
+	return true
 }
 
 // RequireAdmin gates destructive routes.
@@ -180,9 +208,9 @@ func RequireAdmin(c *fiber.Ctx) error {
 	return c.Next()
 }
 
-// RequireProPresenter gates live-presentation control. The guest role gets the
-// song database, queue, Bible and display but never touches the presentation
-// software running the service.
+// RequireProPresenter gates live-presentation control. The guest role is
+// view-only and never touches the presentation software running the service,
+// not even to read its status or library.
 func RequireProPresenter(c *fiber.Ctx) error {
 	if r, _ := c.Locals("role").(string); r == "guest" {
 		return c.Status(403).JSON(fiber.Map{"error": "ProPresenter control is not available for this account"})
@@ -194,6 +222,9 @@ func RequireProPresenter(c *fiber.Ctx) error {
 // lets the admin reset any team account, including their own.
 func (s *Service) SetPassword(c *fiber.Ctx) error {
 	username := strings.ToLower(strings.TrimSpace(c.Params("username")))
+	if username == "guest" {
+		return c.Status(400).JSON(fiber.Map{"error": "Guest has no password — it is view-only"})
+	}
 	var req struct{ Password string }
 	if err := c.BodyParser(&req); err != nil || len(req.Password) < 6 {
 		return c.Status(400).JSON(fiber.Map{"error": "Password must be at least 6 characters"})
