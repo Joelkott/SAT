@@ -1,6 +1,7 @@
 package versedetect
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -437,4 +438,39 @@ func TestDetectorStreamStatus(t *testing.T) {
 	if s := d.Status(); s.Stream != "offline" || s.Listening {
 		t.Fatalf("status %+v", s)
 	}
+}
+
+func TestDetectorStartEndToEnd(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fl := w.(http.Flusher)
+		_, _ = w.Write([]byte("data: {\"type\":\"caption\",\"text\":\"Romans 8:28\"}\n\n"))
+		_, _ = w.Write([]byte(": heartbeat\n\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"status\",\"status\":\"live\"}\n\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"caption\",\"text\":\"Please turn to John chapter 3 verse 16.\"}\n\n"))
+		fl.Flush()
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	d := New(Options{StreamURL: srv.URL, Canon: kjv()})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.Start(ctx)
+
+	deadline := time.Now().Add(3 * time.Second)
+	v := int64(-1)
+	for time.Now().Before(deadline) {
+		p := d.Poll(v, 500*time.Millisecond)
+		v = p.Version
+		if len(p.Detections) == 1 && p.Status.Listening {
+			if p.Detections[0].Passage != "JHN 3:16" {
+				t.Fatalf("got %+v", p.Detections)
+			}
+			return
+		}
+		if len(p.Detections) > 1 {
+			t.Fatalf("replayed caption detected: %+v", p.Detections)
+		}
+	}
+	t.Fatalf("no detection via stream; status %+v", d.Status())
 }
