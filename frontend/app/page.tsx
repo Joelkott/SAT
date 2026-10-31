@@ -1,12 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import SongsPanel from '@/components/SongsPanel';
-import BiblePanel from '@/components/bible/BiblePanel';
+import { useState, useEffect, useRef } from 'react';
+import SongsPanel, { type SongsPanelHandle } from '@/components/SongsPanel';
+import BiblePanel, { type BiblePanelHandle } from '@/components/bible/BiblePanel';
 import HelpDialog from '@/components/HelpDialog';
 import EditLogDialog from '@/components/EditLogDialog';
 import DisplaySettingsDialog from '@/components/DisplaySettingsDialog';
-import { MusicIcon, BookOpenIcon, MonitorIcon, XIcon, EyeIcon, EyeOffIcon, HelpCircleIcon, SlidersIcon } from '@/components/icons';
+import { MusicIcon, BookOpenIcon, MonitorIcon, XIcon, EyeIcon, EyeOffIcon, HelpCircleIcon, SlidersIcon, SmartphoneIcon } from '@/components/icons';
+import { useRemoteControl } from '@/components/remote/useRemoteControl';
+import PairPanel from '@/components/remote/PairPanel';
+import { PAIR_KEY } from '@/lib/remote';
 import api from '@/lib/api';
 import { getRole, type Role } from '@/lib/role';
 
@@ -26,10 +29,19 @@ export default function Home() {
   const [showHelp, setShowHelp] = useState(false);
   const [showEditLog, setShowEditLog] = useState(false);
   const [showDisplaySettings, setShowDisplaySettings] = useState(false);
+  const [showPair, setShowPair] = useState(false);
+  const songsRef = useRef<SongsPanelHandle>(null);
+  const bibleRef = useRef<BiblePanelHandle>(null);
   useEffect(() => {
     if (!localStorage.getItem('sat-token')) window.location.href = '/login';
     else { setAuthed(true); setRole(getRole()); }
   }, []);
+  // Phone remote control: only team roles that can drive outputs (never guest).
+  const remote = useRemoteControl({
+    enabled: authed && (role === 'worship' || role === 'media' || role === 'admin'),
+    songsRef,
+    bibleRef,
+  });
   if (!authed) return <div className="min-h-screen bg-surface" />;
 
   return (
@@ -122,6 +134,24 @@ export default function Home() {
             </button>
           )}
 
+          {/* Pair phone (hidden for guest and when the backend has no /remote routes) */}
+          {role !== 'guest' && remote.state.available && (
+            <button
+              onClick={() => setShowPair(true)}
+              title="Pair a phone to control this window remotely"
+              aria-label="Pair a phone"
+              className="relative h-9 px-2.5 flex items-center gap-2 rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer transition-colors duration-150 text-sm"
+            >
+              <SmartphoneIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">Pair phone</span>
+              {remote.state.pairs.length > 0 && (
+                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-accent-deep text-on-accent text-[10px] font-bold flex items-center justify-center tabular-nums">
+                  {remote.state.pairs.length}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Help */}
           <button
             onClick={() => setShowHelp(true)}
@@ -166,7 +196,7 @@ export default function Home() {
                   </>
                 )}
                 <button
-                  onClick={() => { localStorage.removeItem('sat-token'); localStorage.removeItem('sat-role'); window.location.href = '/login'; }}
+                  onClick={() => { localStorage.removeItem('sat-token'); localStorage.removeItem('sat-role'); localStorage.removeItem(PAIR_KEY); window.location.href = '/login'; }}
                   className="w-full text-left px-3 py-2 rounded-lg text-sm text-danger hover:bg-danger/10 cursor-pointer"
                 >
                   Sign out
@@ -183,12 +213,26 @@ export default function Home() {
       {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
       {showEditLog && <EditLogDialog onClose={() => setShowEditLog(false)} />}
       {showDisplaySettings && <DisplaySettingsDialog onClose={() => setShowDisplaySettings(false)} />}
+      {showPair && <PairPanel remote={remote} onClose={() => setShowPair(false)} />}
+
+      {/* Remote command feedback (never switches tabs) */}
+      {remote.toast && (
+        <div
+          key={remote.toast.id}
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg border border-edge bg-surface-raised text-sm text-ink shadow-2xl fade-swap"
+        >
+          <span className={`mr-2 font-semibold ${remote.toast.ok ? 'text-ok' : 'text-danger'}`}>{remote.toast.ok ? '✓' : '✗'}</span>
+          {remote.toast.text}
+        </div>
+      )}
 
       <div className={activeTab === 'songs' ? '' : 'hidden'}>
-        <SongsPanel />
+        <SongsPanel ref={songsRef} />
       </div>
       <div className={activeTab === 'bible' ? '' : 'hidden'}>
-        <BiblePanel />
+        <BiblePanel ref={bibleRef} />
       </div>
     </div>
   );
