@@ -13,8 +13,9 @@ interface VerseDetectBannerProps {
 
 const ERROR_MS = 4000;
 
-// Media-only banner for a verse detected in the live sermon captions.
-// No Enter shortcut: Enter already sends the selection / accepts mirror banners.
+// Banner for a verse detected in the live sermon captions (media/admin).
+// Shift+Enter sends it; plain Enter keeps its existing meaning (send the
+// selection / accept a mirror banner), which ignores Shift for that reason.
 export default function VerseDetectBanner({ detection, onSend, onDismiss }: VerseDetectBannerProps) {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
@@ -57,6 +58,22 @@ export default function VerseDetectBanner({ detection, onSend, onDismiss }: Vers
     }
   };
 
+  // Shift+Enter confirms the suggestion, unless the operator is typing.
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
+      e.preventDefault();
+      handleSendRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div
       role="status"
@@ -79,10 +96,11 @@ export default function VerseDetectBanner({ detection, onSend, onDismiss }: Vers
       <button
         onClick={handleSend}
         disabled={isSending}
-        title="Navigate to this verse and send it to the wall"
+        title="Navigate to this verse and send it to the wall (Shift+Enter)"
         className="h-8 px-3.5 rounded-md bg-accent-deep hover:bg-accent text-on-accent text-sm font-semibold cursor-pointer transition-colors duration-150 disabled:opacity-60 disabled:cursor-default shrink-0"
       >
         {isSending ? 'Sending…' : 'Send to Wall'}
+        {!isSending && <kbd className="ml-2 text-[10px] font-medium opacity-70">⇧↵</kbd>}
       </button>
       <button
         onClick={onDismiss}

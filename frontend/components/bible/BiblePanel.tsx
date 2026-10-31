@@ -976,7 +976,8 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
   useEffect(() => {
     if (!suggestion) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Enter') return;
+      // Shift+Enter belongs to the verse-detection banner.
+      if (e.key !== 'Enter' || e.shiftKey) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (isActivatableControl(e.target)) return;
@@ -1118,7 +1119,8 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
     // guest is view-only: Enter sends nothing, so don't even listen.
     if (role === 'guest' || suggestion || !selectedChapter) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Enter') return;
+      // Shift+Enter belongs to the verse-detection banner.
+      if (e.key !== 'Enter' || e.shiftKey) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if ((e.target as HTMLElement)?.isContentEditable) return;
