@@ -546,7 +546,7 @@ export const liveApi = {
     return response.data;
   },
 
-  setOutputConfig: async (cfg: { blur: number; box_w_px: number; box_h_px: number; text_scale: number; layout: WallLayout }): Promise<OutputConfig> => {
+  setOutputConfig: async (cfg: { blur: number; box_w_px: number; box_h_px: number; text_scale: number; layout: WallLayout; fade_ms: number }): Promise<OutputConfig> => {
     const response = await api.put<OutputConfig>('/live/output-config', cfg);
     return response.data;
   },
@@ -642,6 +642,7 @@ export interface OutputConfig {
   box_h_px: number;    // box height in px; 0 = fill the IMAG band
   text_scale: number;  // 0.5..2.0 multiplier on auto-fitted text size
   layout: WallLayout;  // 'imag' = boxes flank a free IMAG centre; 'fullscreen' = boxes split the full width
+  fade_ms: number;     // 0..3000 fade in on send / out on clear (not part of presets)
   updated_at: number;
 }
 

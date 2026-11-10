@@ -14,8 +14,8 @@ interface VerseDetectBannerProps {
 const ERROR_MS = 4000;
 
 // Banner for a verse detected in the live sermon captions (media/admin).
-// Shift+Enter sends it; plain Enter keeps its existing meaning (send the
-// selection / accept a mirror banner), which ignores Shift for that reason.
+// Shift+Enter sends it; plain Enter keeps its meaning (send the selection)
+// and Ctrl+Enter accepts a mirror banner; both ignore Shift for that reason.
 export default function VerseDetectBanner({ detection, onSend, onDismiss }: VerseDetectBannerProps) {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');

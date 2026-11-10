@@ -80,7 +80,16 @@ const selKey = (s: VerseSelection | null) => (s ? `${s.start}-${s.end}` : 'all')
 const wallKey = (passage: string, bibles?: string[]) =>
   `${passage}|${normalizeBibleIds(bibles || []).join(',')}`;
 
-type WallCfg = { blur: number; box_w_px: number; box_h_px: number; text_scale: number; layout: WallLayout };
+type AutoMode = 'off' | 'all' | 'jev' | 'worship';
+const AUTO_MODE_KEY = 'bible-auto-mode';
+const AUTO_MODES: { value: AutoMode; label: string; title: string; mediaOnly?: boolean }[] = [
+  { value: 'off', label: 'Confirm', title: 'Jev detections and worship verses wait for your confirmation' },
+  { value: 'all', label: 'Auto: Jev + Worship', title: 'Jev detections and worship verses go to the wall immediately', mediaOnly: true },
+  { value: 'jev', label: 'Auto: Jev', title: 'Jev detections go to the wall immediately; worship verses wait for confirmation' },
+  { value: 'worship', label: 'Auto: Worship', title: 'Worship verses go to the wall immediately; Jev detections wait for confirmation', mediaOnly: true },
+];
+
+type WallCfg = { blur: number; box_w_px: number; box_h_px: number; text_scale: number; layout: WallLayout; fade_ms: number };
 
 const toWallCfg = (c: OutputConfig): WallCfg => ({
   blur: c.blur,
@@ -88,6 +97,7 @@ const toWallCfg = (c: OutputConfig): WallCfg => ({
   box_h_px: c.box_h_px,
   text_scale: c.text_scale,
   layout: c.layout === 'fullscreen' ? 'fullscreen' : 'imag',
+  fade_ms: c.fade_ms ?? 600,
 });
 
 const sameWallCfg = (a: WallCfg, b: WallCfg) =>
@@ -95,7 +105,8 @@ const sameWallCfg = (a: WallCfg, b: WallCfg) =>
   a.box_w_px === b.box_w_px &&
   a.box_h_px === b.box_h_px &&
   a.text_scale === b.text_scale &&
-  a.layout === b.layout;
+  a.layout === b.layout &&
+  a.fade_ms === b.fade_ms;
 
 // Enter on a focused button/link should activate it, not send to the wall —
 // except inside [data-enter-sends] (verse/chapter/pin navigation), where the
@@ -544,7 +555,7 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
 
   // Wall-output layout (preset + blur + box size) — media/admin adjustable,
   // persisted server-side and applied live on the Resolume/OBS capture page.
-  const [outputCfg, setOutputCfg] = useState<WallCfg>({ blur: 14, box_w_px: 0, box_h_px: 0, text_scale: 1, layout: 'imag' });
+  const [outputCfg, setOutputCfg] = useState<WallCfg>({ blur: 14, box_w_px: 0, box_h_px: 0, text_scale: 1, layout: 'imag', fade_ms: 600 });
   const [outputCfgLoaded, setOutputCfgLoaded] = useState(false);
   const [showWallLayout, setShowWallLayout] = useState(false);
   const [savingCfg, setSavingCfg] = useState(false);
@@ -695,8 +706,10 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
       box_h_px: p.box_h_px,
       text_scale: p.text_scale,
       layout: p.layout === 'fullscreen' ? 'fullscreen' : 'imag',
+      // Presets are layout only; the fade is an operator preference.
+      fade_ms: outputCfg.fade_ms,
     });
-  }, [saveOutputCfg]);
+  }, [saveOutputCfg, outputCfg.fade_ms]);
 
   const handleSavePreset = useCallback(async () => {
     const name = presetName.trim();
@@ -827,21 +840,31 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
   const [suggestion, setSuggestion] = useState<{ reference: string; passage?: string; updated_at: number; bibles?: string[] } | null>(null);
   const seenSuggestionRef = useRef<number>(0);
 
-  // Media: mirror what worship sends to live. Auto = follow and send to the
-  // wall immediately; off = show a confirmation banner first.
-  const [autoMirror, setAutoMirror] = useState(true);
+  // Which incoming verses go to the wall without confirmation: Jev's sermon
+  // detections, worship's live verses (media only), both, or neither. Not
+  // auto = a banner the operator confirms (Shift+Enter / Enter).
+  const [autoMode, setAutoMode] = useState<AutoMode>('worship');
   useEffect(() => {
-    const v = localStorage.getItem('bible-auto-mirror');
-    if (v !== null) setAutoMirror(v === '1');
+    try {
+      const v = localStorage.getItem(AUTO_MODE_KEY);
+      if (v && AUTO_MODES.some((m) => m.value === v)) {
+        setAutoMode(v as AutoMode);
+      } else {
+        // Before the modes existed this was a plain auto-mirror switch.
+        const legacy = localStorage.getItem('bible-auto-mirror');
+        if (legacy !== null) setAutoMode(legacy === '1' ? 'worship' : 'off');
+      }
+    } catch {}
   }, []);
-  const toggleAutoMirror = () => {
-    const next = !autoMirror;
-    try { localStorage.setItem('bible-auto-mirror', next ? '1' : '0'); } catch {}
-    setAutoMirror(next);
+  const autoMirror = autoMode === 'all' || autoMode === 'worship';
+  const changeAutoMode = (next: AutoMode) => {
+    const mirrorWasAuto = autoMirror;
+    try { localStorage.setItem(AUTO_MODE_KEY, next); } catch {}
+    setAutoMode(next);
     // Turning auto-mirror on while a "Worship is live with…" banner waits:
     // follow it now, as auto-mirror would have, instead of leaving a stale
     // banner that could later re-send an old verse.
-    if (next && role === 'media' && suggestion) {
+    if (!mirrorWasAuto && (next === 'all' || next === 'worship') && role === 'media' && suggestion) {
       seenSuggestionRef.current = suggestion.updated_at;
       applyMirror(suggestion.passage || suggestion.reference, suggestion.bibles);
       setSuggestion(null);
@@ -865,6 +888,8 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
   const dropPending = (reason: string) => setPending(null, reason);
   // Marks the next wall send as mirror-triggered (suppresses re-publishing).
   const mirrorSendRef = useRef(false);
+  // Panel root, to tell whether the Bible tab is the one on screen.
+  const rootRef = useRef<HTMLDivElement>(null);
   // What this screen is currently showing, for the same-verse guard below.
   const currentReferenceRef = useRef<string | null>(null);
   currentReferenceRef.current = currentReference;
@@ -971,16 +996,15 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
     return () => clearInterval(id);
   }, [role]);
 
-  // Enter accepts a pending suggestion banner (worship: open it; media:
-  // mirror it to the wall), skipped while typing in a field.
+  // Ctrl/Cmd+Enter accepts a pending suggestion banner (worship: open it;
+  // media: mirror it to the wall), skipped while typing in a field. Plain
+  // Enter stays the operator's own send, banner or not.
   useEffect(() => {
     if (!suggestion) return;
     const onKey = (e: KeyboardEvent) => {
-      // Shift+Enter belongs to the verse-detection banner.
-      if (e.key !== 'Enter' || e.shiftKey) return;
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (isActivatableControl(e.target)) return;
       e.preventDefault();
       seenSuggestionRef.current = suggestion.updated_at;
       if (role === 'media') applyMirror(suggestion.passage || suggestion.reference, suggestion.bibles);
@@ -1112,15 +1136,16 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
     return { ok: true, message: columns[0]?.reference };
   }, [selectedChapter, chapterReady, buildScriptureColumns, role, selectedBibleIds, queuePendingSend, currentPassage]);
 
-  // Enter sends the current selection to the wall/display (role-appropriate).
-  // Skipped when a suggestion banner is visible (that handler takes priority)
-  // or when no chapter is loaded.
+  // Enter sends the current selection to the wall/display (role-appropriate)
+  // — always the operator's own choice, even while a suggestion banner waits
+  // (Ctrl/Cmd+Enter accepts that). Skipped when no chapter is loaded.
   useEffect(() => {
     // guest is view-only: Enter sends nothing, so don't even listen.
-    if (role === 'guest' || suggestion || !selectedChapter) return;
+    if (role === 'guest' || !selectedChapter) return;
     const onKey = (e: KeyboardEvent) => {
-      // Shift+Enter belongs to the verse-detection banner.
-      if (e.key !== 'Enter' || e.shiftKey) return;
+      // Shift+Enter belongs to the verse-detection banner, Ctrl/Cmd+Enter to
+      // the suggestion banner.
+      if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if ((e.target as HTMLElement)?.isContentEditable) return;
@@ -1136,7 +1161,7 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [suggestion, selectedChapter, role, handleSendToWall, handleSendToDisplay]);
+  }, [selectedChapter, role, handleSendToWall, handleSendToDisplay]);
 
   // Complete a queued send (mirror, or a push made while the chapter was
   // still loading) only for the exact navigation it was requested for, once
@@ -1197,6 +1222,24 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
       return { ok: false, message: 'Could not clear the wall' };
     }
   }, []);
+
+  // Esc clears the wall — the pair to Enter sending it. Only while the Bible
+  // tab is showing and no dialog is open (dialogs close on Esc themselves).
+  useEffect(() => {
+    if (role === 'guest') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || e.repeat) return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+      if (!rootRef.current?.getClientRects().length) return;
+      if (document.querySelector('.fixed.inset-0, [role="dialog"]')) return;
+      e.preventDefault();
+      handleClearWall();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [role, handleClearWall]);
 
 
   // Derived -----------------------------------------------------------------
@@ -1349,8 +1392,39 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
     clear: () => handleRef.current.clear(),
   }), []);
 
+  // Auto (Jev): send each new detection straight to the wall through the same
+  // pending-send-safe path the banner's Shift+Enter uses. Only detections made
+  // after auto was switched on, so a reload or mode change never replays an
+  // old one; anything that fails to send stays up as a banner to confirm.
+  const autoJev = canDetect && (autoMode === 'all' || autoMode === 'jev');
+  const autoJevSinceRef = useRef(0);
+  const autoJevSentRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (autoJev) autoJevSinceRef.current = Date.now();
+  }, [autoJev]);
+  const detection = verseDetect.detection;
+  const dismissDetection = verseDetect.dismiss;
+  useEffect(() => {
+    if (!autoJev || !detection || autoJevSentRef.current === detection.id) return;
+    if (detection.detectedAt < autoJevSinceRef.current) return;
+    autoJevSentRef.current = detection.id;
+    // Already on the wall (the preacher repeated it): nothing to send.
+    if (lastWallKeyRef.current === wallKey(detection.passage, selectedBibleIds)) {
+      dismissDetection(detection.id);
+      return;
+    }
+    handleRef.current.lookupAndSend(detection.passage, 'wall')
+      .then((r) => {
+        if (r.ok) dismissDetection(detection.id);
+        else console.warn('Auto-send of detected verse did not go out:', detection.reference, r.message);
+      })
+      .catch((err) => console.error('Auto-send of detected verse failed:', detection.reference, err));
+    // selectedBibleIds is only read for the repeat check, not a trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoJev, detection, dismissDetection]);
+
   return (
-    <div className="px-4 sm:px-6 py-5 space-y-4">
+    <div ref={rootRef} className="px-4 sm:px-6 py-5 space-y-4">
       {/* Toolbar: reference search + translation columns, one grouped card */}
       <div className="bg-surface-raised border border-edge rounded-xl p-3 flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[260px]">
@@ -1388,25 +1462,27 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
               </div>
             );
           })}
-          {role === 'media' && (
-            <button
-              onClick={toggleAutoMirror}
-              role="switch"
-              aria-checked={autoMirror}
-              title={
-                autoMirror
-                  ? 'Verses worship takes live are sent to the wall automatically. Click to require confirmation instead.'
-                  : 'Verses worship takes live show a confirmation prompt first. Click to mirror automatically.'
-              }
-              className={`h-9 px-3 flex items-center gap-2 rounded-lg border cursor-pointer text-sm font-medium transition-colors duration-150 ${
-                autoMirror
+          {(role === 'media' || (role === 'admin' && verseDetect.available)) && (
+            <label
+              className={`h-9 pl-3 pr-1 flex items-center gap-2 rounded-lg border text-sm font-medium transition-colors duration-150 ${
+                autoMode !== 'off'
                   ? 'bg-ok/10 border-ok/40 text-ok'
                   : 'bg-surface-input border-edge text-ink-dim hover:text-ink hover:border-edge-strong'
               }`}
+              title={AUTO_MODES.find((m) => m.value === autoMode)?.title}
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${autoMirror ? 'bg-ok animate-pulse' : 'bg-edge-strong'}`} />
-              {autoMirror ? 'Auto-mirror' : 'Mirror: confirm'}
-            </button>
+              <span className={`w-1.5 h-1.5 rounded-full ${autoMode !== 'off' ? 'bg-ok animate-pulse' : 'bg-edge-strong'}`} />
+              <span className="sr-only">Send to wall automatically</span>
+              <select
+                value={role === 'admin' && (autoMode === 'all' || autoMode === 'worship') ? 'off' : autoMode}
+                onChange={(e) => changeAutoMode(e.target.value as AutoMode)}
+                className="h-full bg-transparent pr-1 cursor-pointer focus:outline-none"
+              >
+                {AUTO_MODES.filter((m) => role === 'media' || !m.mediaOnly).map((m) => (
+                  <option key={m.value} value={m.value} className="bg-surface-raised text-ink">{m.label}</option>
+                ))}
+              </select>
+            </label>
           )}
           {canDetect && verseDetect.available && (
             <VerseDetectToggle status={verseDetect.status} onToggle={verseDetect.setEnabled} />
@@ -1487,7 +1563,7 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
       {/* Output actions — sends need an open chapter; Clear is always
           reachable so the wall can be blanked from anywhere. Gated by role;
           the view-only guest gets none of them (Pin is local and stays). */}
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2 [&>button]:whitespace-nowrap">
         {selectedChapter && (role === 'media' || role === 'admin') && (
           <button
             onClick={handleSendToWall}
@@ -1542,7 +1618,7 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
         {role !== 'guest' && (
           <button
             onClick={handleClearWall}
-            title="Clear scripture from all outputs"
+            title="Clear scripture from all outputs (Esc)"
             className="h-9 px-3 rounded-lg border border-edge text-ink-mute hover:text-danger hover:border-danger/50 cursor-pointer text-sm"
           >
             Clear
@@ -1737,9 +1813,27 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
               />
               <p className="text-xs text-ink-mute mt-1">Frosts the video behind the box (may not render in OBS&apos;s browser source).</p>
             </label>
+            <label className="block">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm text-ink-dim">Fade</span>
+                <span className="text-xs text-ink-mute tabular-nums">
+                  {(outputCfg.fade_ms / 1000).toFixed(1)}s
+                </span>
+              </div>
+              <input
+                type="range" min={0} max={3000} step={100}
+                value={outputCfg.fade_ms}
+                onChange={(e) => queueOutputCfgSave({ ...outputCfg, fade_ms: Number(e.target.value) })}
+                className="w-full accent-accent cursor-pointer"
+              />
+              <p className="text-xs text-ink-mute mt-1">
+                How long the boxes take to fade in on Send and out on Clear. Leave the Resolume clip
+                connected at full opacity.
+              </p>
+            </label>
           </div>
           <button
-            onClick={() => saveOutputCfg({ blur: 14, box_w_px: 0, box_h_px: 0, text_scale: 1, layout: 'imag' })}
+            onClick={() => saveOutputCfg({ blur: 14, box_w_px: 0, box_h_px: 0, text_scale: 1, layout: 'imag', fade_ms: 600 })}
             className="text-xs text-ink-mute hover:text-ink cursor-pointer transition-colors duration-150"
           >
             Reset to defaults
@@ -1757,7 +1851,7 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
         />
       )}
 
-      {/* Worship went live — media confirms the mirror (auto-mirror off) */}
+      {/* Worship went live — media confirms the mirror (worship not on auto) */}
       {role === 'media' && suggestion && (
         <div className="fade-swap flex items-center gap-3 bg-live/10 border border-live/40 rounded-lg px-4 py-2.5">
           <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulse shrink-0" />
@@ -1770,10 +1864,11 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
               applyMirror(suggestion.passage || suggestion.reference, suggestion.bibles);
               setSuggestion(null);
             }}
-            title="Mirror to wall (Enter)"
+            title="Mirror to wall (Ctrl+Enter)"
             className="h-8 px-3.5 rounded-md bg-accent-deep hover:bg-accent text-on-accent text-sm font-semibold cursor-pointer transition-colors duration-150"
           >
-            Mirror to Wall ↵
+            Mirror to Wall
+            <kbd className="ml-2 text-[10px] font-medium opacity-70">Ctrl↵</kbd>
           </button>
           <button
             onClick={() => { seenSuggestionRef.current = suggestion.updated_at; setSuggestion(null); }}
@@ -1798,10 +1893,11 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
               handleReferenceSearch(suggestion.passage || suggestion.reference);
               setSuggestion(null);
             }}
-            title="Accept suggestion (Enter)"
+            title="Accept suggestion (Ctrl+Enter)"
             className="h-8 px-3.5 rounded-md bg-accent-deep hover:bg-accent text-on-accent text-sm font-semibold cursor-pointer transition-colors duration-150"
           >
-            Accept ↵
+            Accept
+            <kbd className="ml-2 text-[10px] font-medium opacity-70">Ctrl↵</kbd>
           </button>
           <button
             onClick={() => { seenSuggestionRef.current = suggestion.updated_at; setSuggestion(null); }}
@@ -1950,12 +2046,13 @@ function BiblePanel(_props: {}, ref: React.ForwardedRef<BiblePanelHandle>) {
                   />
                 </div>
               )}
-              <div className="overflow-x-auto">
+              {/* Phones: translations stack. md+: side by side, scrolling past 260px each. */}
+              <div className="md:overflow-x-auto">
                 <div
-                  className="grid gap-4"
+                  className="grid grid-cols-1 gap-4 md:[grid-template-columns:var(--verse-cols)]"
                   style={{
-                    gridTemplateColumns: `repeat(${selectedBibleIds.length}, minmax(260px, 1fr))`,
-                  }}
+                    '--verse-cols': `repeat(${selectedBibleIds.length}, minmax(260px, 1fr))`,
+                  } as React.CSSProperties}
                 >
                   {selectedBibleIds.map((id) => {
                     const t = translations.find((x) => x.id === id);

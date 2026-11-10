@@ -101,27 +101,29 @@ func (db *DB) ensureOutputConfigTable() error {
 		ALTER TABLE output_config ADD COLUMN IF NOT EXISTS box_w_px INT NOT NULL DEFAULT 0;
 		ALTER TABLE output_config ADD COLUMN IF NOT EXISTS box_h_px INT NOT NULL DEFAULT 0;
 		ALTER TABLE output_config ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT 'imag';
+		ALTER TABLE output_config ADD COLUMN IF NOT EXISTS fade_ms INT NOT NULL DEFAULT 600;
 		INSERT INTO output_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 	`)
 	return err
 }
 
 // GetOutputConfig returns the wall-output layout config (box size in px;
-// 0 = fill the panel; layout is "imag" or "fullscreen").
-func (db *DB) GetOutputConfig() (blur, boxWpx, boxHpx int, textScale float64, layout string, updatedAt int64, err error) {
-	err = db.QueryRow(`SELECT blur, box_w_px, box_h_px, text_scale, layout, updated_at FROM output_config WHERE id = 1`).
-		Scan(&blur, &boxWpx, &boxHpx, &textScale, &layout, &updatedAt)
+// 0 = fill the panel; layout is "imag" or "fullscreen"; fadeMs is the
+// show/clear fade on the capture page).
+func (db *DB) GetOutputConfig() (blur, boxWpx, boxHpx int, textScale float64, layout string, fadeMs int, updatedAt int64, err error) {
+	err = db.QueryRow(`SELECT blur, box_w_px, box_h_px, text_scale, layout, fade_ms, updated_at FROM output_config WHERE id = 1`).
+		Scan(&blur, &boxWpx, &boxHpx, &textScale, &layout, &fadeMs, &updatedAt)
 	return
 }
 
 // SetOutputConfig persists the wall-output layout config (layout is the
 // preset: "imag" or "fullscreen").
-func (db *DB) SetOutputConfig(blur, boxWpx, boxHpx int, textScale float64, layout string, updatedAt int64) error {
+func (db *DB) SetOutputConfig(blur, boxWpx, boxHpx int, textScale float64, layout string, fadeMs int, updatedAt int64) error {
 	_, err := db.Exec(`
-		INSERT INTO output_config (id, blur, box_w_px, box_h_px, text_scale, updated_at, layout)
-		VALUES (1, $1, $2, $3, $4, $5, $6)
-		ON CONFLICT (id) DO UPDATE SET blur = $1, box_w_px = $2, box_h_px = $3, text_scale = $4, updated_at = $5, layout = $6
-	`, blur, boxWpx, boxHpx, textScale, updatedAt, layout)
+		INSERT INTO output_config (id, blur, box_w_px, box_h_px, text_scale, updated_at, layout, fade_ms)
+		VALUES (1, $1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (id) DO UPDATE SET blur = $1, box_w_px = $2, box_h_px = $3, text_scale = $4, updated_at = $5, layout = $6, fade_ms = $7
+	`, blur, boxWpx, boxHpx, textScale, updatedAt, layout, fadeMs)
 	return err
 }
 

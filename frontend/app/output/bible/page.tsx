@@ -1,8 +1,8 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { liveApi, LiveScripture } from '@/lib/api';
+import { liveApi, LiveScripture, LiveScriptureColumn } from '@/lib/api';
 import { parseVerses } from '@/components/bible/verseUtils';
 import { useFitText } from '@/components/bible/scriptureFit';
 import Dissolve from '@/components/bible/Dissolve';
@@ -35,10 +35,16 @@ import Dissolve from '@/components/bible/Dissolve';
 // Example for a 2280x1120 wall with a top-half centered 16:9 IMAG:
 //   /output/bible?w=2280&h=1120&cw=996&ch=560
 //
-// Content updates by polling the backend once per second, so this page can
-// run on a different machine than the operator's control window.
+// Content updates by polling the backend, so this page can run on a different
+// machine than the operator's control window. Scripture is polled fast so
+// Send/Clear feel immediate; layout changes are not time-critical.
+//
+// Send fades the boxes in and Clear fades them out (fade_ms from the Wall
+// layout panel), so the Resolume clip carrying this page can stay connected
+// at full opacity — SAT alone decides when scripture is on the wall.
 
 const POLL_MS = 1000;
+const SCRIPTURE_POLL_MS = 250;
 
 type PanelProps = {
   abbreviation: string;
@@ -172,6 +178,12 @@ function BibleOutput() {
   const [layout, setLayout] = useState<'imag' | 'fullscreen'>(
     params.get('layout') === 'fullscreen' ? 'fullscreen' : 'imag'
   );
+  const [fadeMs, setFadeMs] = useState<number>(600);
+  // What the boxes render: kept through a Clear so the last verse fades out
+  // instead of vanishing, then dropped once the fade has finished.
+  const [shownColumns, setShownColumns] = useState<LiveScriptureColumn[]>([]);
+  const [on, setOn] = useState(false);
+  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // No auth: this page is a browser-capture source (Resolume/OBS) and cannot
   // carry a session. It only reads the public GET /live/scripture endpoint.
@@ -193,7 +205,10 @@ function BibleOutput() {
   useEffect(() => {
     let alive = true;
     let last = 0;
+    let inFlight = false;
     const tick = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const s = await liveApi.getScripture();
         if (alive && s.updated_at !== last) {
@@ -202,12 +217,40 @@ function BibleOutput() {
         }
       } catch {
         // Keep last-known scripture on transient errors — never blank mid-service.
+      } finally {
+        inFlight = false;
       }
     };
     tick();
-    const id = setInterval(tick, POLL_MS);
+    const id = setInterval(tick, SCRIPTURE_POLL_MS);
     return () => { alive = false; clearInterval(id); };
   }, []);
+
+  // Send: show the new columns and fade up. Clear: fade down holding the
+  // last verse, then drop it so the next Send starts from an empty box.
+  useEffect(() => {
+    if (!state) return;
+    if (fadeTimerRef.current) {
+      clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
+    const cols = state.visible ? state.columns || [] : [];
+    if (cols.length > 0) {
+      setShownColumns(cols);
+      setOn(true);
+    } else {
+      setOn(false);
+      fadeTimerRef.current = setTimeout(() => {
+        fadeTimerRef.current = null;
+        setShownColumns([]);
+      }, fadeMs);
+    }
+    // fadeMs is read at the moment of the change; a later slider move must
+    // not re-run this and re-show or re-clear anything.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  useEffect(() => () => { if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current); }, []);
 
   // Poll the operator-set layout config so blur/box-size changes made in the
   // control window take effect on the wall within a second.
@@ -224,6 +267,7 @@ function BibleOutput() {
           setBoxHpx(cfg.box_h_px);
           setTextScale(cfg.text_scale);
           setLayout(cfg.layout === 'fullscreen' ? 'fullscreen' : 'imag');
+          setFadeMs(cfg.fade_ms ?? 600);
         }
       } catch {
         // Keep last-known layout on transient errors.
@@ -234,9 +278,9 @@ function BibleOutput() {
     return () => { alive = false; clearInterval(id); };
   }, []);
 
-  const columns = state?.visible ? state.columns || [] : [];
-  const left = columns[0];
-  const right = columns[1] || columns[0];
+  const left = shownColumns[0];
+  const right = shownColumns[1] || shownColumns[0];
+  const fadeStyle = { opacity: on ? 1 : 0, transition: `opacity ${fadeMs}ms ease` };
 
   // Each box is anchored to its top screen corner (left box top-left, right
   // box top-right) and extends inward by its width and down by its height.
@@ -261,7 +305,7 @@ function BibleOutput() {
       style={{ width: w, height: h, backgroundColor: transparent ? 'transparent' : 'black' }}
     >
       {/* Left box — anchored to the left edge, extends inward by boxW */}
-      <div className="absolute left-0" style={{ top: boxTop, height: boxH, width: boxW }}>
+      <div className="absolute left-0" style={{ top: boxTop, height: boxH, width: boxW, ...fadeStyle }}>
         {left && (
           <ScripturePanel
             {...left}
@@ -288,7 +332,7 @@ function BibleOutput() {
       )}
 
       {/* Right box — anchored to the right edge, extends inward by boxW */}
-      <div className="absolute right-0" style={{ top: boxTop, height: boxH, width: boxW }}>
+      <div className="absolute right-0" style={{ top: boxTop, height: boxH, width: boxW, ...fadeStyle }}>
         {right && (
           <ScripturePanel
             {...right}

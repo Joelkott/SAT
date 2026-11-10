@@ -106,6 +106,8 @@ export default function HelpDialog({ onClose }: HelpDialogProps) {
             <ShortcutRow keys={['←', '→']}>Step to the previous / next verse (flows across chapters)</ShortcutRow>
             <ShortcutRow keys={['Enter']}>Send the selected passage (wall or display, by role)</ShortcutRow>
             <ShortcutRow keys={['Shift+Enter']}>Send the verse detected from the sermon captions</ShortcutRow>
+            <ShortcutRow keys={['Ctrl+Enter', '⌘+Enter']}>Accept the suggestion banner (mirror worship&apos;s verse / open media&apos;s suggestion)</ShortcutRow>
+            <ShortcutRow keys={['Esc']}>Clear scripture from the wall (fades out)</ShortcutRow>
             <div className="px-3 py-2 text-sm text-ink-dim">
               Add a translation abbreviation to the end of a reference to switch the first
               column: <span className="text-ink">Ps 112:2 NLT</span> shows that verse in the New

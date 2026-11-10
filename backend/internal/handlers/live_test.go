@@ -36,6 +36,18 @@ func TestClampOutputConfigExistingClamps(t *testing.T) {
 	}
 }
 
+func TestClampOutputConfigFade(t *testing.T) {
+	cases := []struct{ in, want int }{{-50, 0}, {0, 0}, {600, 600}, {3000, 3000}, {9000, 3000}}
+	for _, tc := range cases {
+		if got := clampOutputConfig(OutputConfig{FadeMs: tc.in}).FadeMs; got != tc.want {
+			t.Errorf("clampOutputConfig(FadeMs=%d).FadeMs = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+	if got := defaultOutputConfig().FadeMs; got != 600 {
+		t.Errorf("defaultOutputConfig().FadeMs = %d, want 600", got)
+	}
+}
+
 func TestDefaultOutputConfigLayout(t *testing.T) {
 	if got := defaultOutputConfig().Layout; got != "imag" {
 		t.Errorf("defaultOutputConfig().Layout = %q, want %q", got, "imag")

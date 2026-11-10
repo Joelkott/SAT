@@ -41,11 +41,12 @@ type OutputConfig struct {
 	BoxHpx    int     `json:"box_h_px"`   // box height in px; 0 = fill the IMAG band
 	TextScale float64 `json:"text_scale"` // 0.5..1.0 — text auto-fits the box, so this can only pull it back
 	Layout    string  `json:"layout"`     // "imag" (boxes flank a free centre) or "fullscreen" (boxes split the full width)
+	FadeMs    int     `json:"fade_ms"`    // fade in on send / out on clear; replaces Resolume's clip transition
 	UpdatedAt int64   `json:"updated_at"` // unix millis
 }
 
 func defaultOutputConfig() OutputConfig {
-	return OutputConfig{Blur: 14, BoxWpx: 0, BoxHpx: 0, TextScale: 1.0, Layout: "imag", UpdatedAt: 0}
+	return OutputConfig{Blur: 14, BoxWpx: 0, BoxHpx: 0, TextScale: 1.0, Layout: "imag", FadeMs: 600, UpdatedAt: 0}
 }
 
 func clampf(v, lo, hi float64) float64 {
@@ -74,6 +75,7 @@ func clampOutputConfig(cfg OutputConfig) OutputConfig {
 	cfg.BoxHpx = clampi(cfg.BoxHpx, 0, 6000)
 	// Text auto-fits its box; the operator scale only shrinks from that.
 	cfg.TextScale = clampf(cfg.TextScale, 0.5, 1.0)
+	cfg.FadeMs = clampi(cfg.FadeMs, 0, 3000)
 	// Only "fullscreen" is a recognised alternative; anything else (including
 	// missing/legacy values) falls back to the IMAG layout.
 	l := strings.ToLower(strings.TrimSpace(cfg.Layout))
@@ -141,11 +143,11 @@ func (h *Handler) ClearLiveScripture(c *fiber.Ctx) error {
 // GetOutputConfig returns the wall-output layout config (public — read by the
 // capture page). GET /api/live/output-config
 func (h *Handler) GetOutputConfig(c *fiber.Ctx) error {
-	blur, boxWpx, boxHpx, textScale, layout, updatedAt, err := h.db.GetOutputConfig()
+	blur, boxWpx, boxHpx, textScale, layout, fadeMs, updatedAt, err := h.db.GetOutputConfig()
 	if err != nil {
 		return c.JSON(defaultOutputConfig())
 	}
-	return c.JSON(clampOutputConfig(OutputConfig{Blur: blur, BoxWpx: boxWpx, BoxHpx: boxHpx, TextScale: textScale, Layout: layout, UpdatedAt: updatedAt}))
+	return c.JSON(clampOutputConfig(OutputConfig{Blur: blur, BoxWpx: boxWpx, BoxHpx: boxHpx, TextScale: textScale, Layout: layout, FadeMs: fadeMs, UpdatedAt: updatedAt}))
 }
 
 // SetOutputConfig updates the wall-output layout (media/admin only).
@@ -160,12 +162,19 @@ func (h *Handler) SetOutputConfig(c *fiber.Ctx) error {
 		BoxHpx    int     `json:"box_h_px"`
 		TextScale float64 `json:"text_scale"`
 		Layout    string  `json:"layout"`
+		FadeMs    *int    `json:"fade_ms"` // optional: a control window loaded before fades existed omits it
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
 	}
-	cfg := clampOutputConfig(OutputConfig{Blur: req.Blur, BoxWpx: req.BoxWpx, BoxHpx: req.BoxHpx, TextScale: req.TextScale, Layout: req.Layout, UpdatedAt: time.Now().UnixMilli()})
-	if err := h.db.SetOutputConfig(cfg.Blur, cfg.BoxWpx, cfg.BoxHpx, cfg.TextScale, cfg.Layout, cfg.UpdatedAt); err != nil {
+	fadeMs := defaultOutputConfig().FadeMs
+	if req.FadeMs != nil {
+		fadeMs = *req.FadeMs
+	} else if _, _, _, _, _, cur, _, err := h.db.GetOutputConfig(); err == nil {
+		fadeMs = cur
+	}
+	cfg := clampOutputConfig(OutputConfig{Blur: req.Blur, BoxWpx: req.BoxWpx, BoxHpx: req.BoxHpx, TextScale: req.TextScale, Layout: req.Layout, FadeMs: fadeMs, UpdatedAt: time.Now().UnixMilli()})
+	if err := h.db.SetOutputConfig(cfg.Blur, cfg.BoxWpx, cfg.BoxHpx, cfg.TextScale, cfg.Layout, cfg.FadeMs, cfg.UpdatedAt); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to save output config"})
 	}
 	return c.JSON(cfg)

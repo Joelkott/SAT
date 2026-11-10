@@ -8,6 +8,7 @@ import { verseDetectApi, VerseDetection, VerseDetectStatus } from '@/lib/api';
 // dismissed or sent. Stops quietly on 403/404 (wrong role / older backend).
 
 export interface ActiveDetection extends VerseDetection {
+  detectedAt: number; // Date.now()-based (from the server's age_ms, so clock skew doesn't matter)
   expiresAt: number; // Date.now()-based
 }
 
@@ -91,7 +92,7 @@ export default function useVerseDetect(active: boolean): VerseDetectState {
       if (handled.includes(d.id)) continue;
       const expiresAt = now + Math.max(0, DETECTION_TTL_MS - (d.age_ms || 0));
       if (expiresAt <= now) continue;
-      if (!newest || d.id > newest.id) newest = { ...d, expiresAt };
+      if (!newest || d.id > newest.id) newest = { ...d, detectedAt: now - (d.age_ms || 0), expiresAt };
     }
     if (!newest) return;
     const current = detectionRef.current;
