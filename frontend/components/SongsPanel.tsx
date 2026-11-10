@@ -882,10 +882,10 @@ function SongsPanel({ onSongPingChange }: SongsPanelProps, ref: ForwardedRef<Son
         </div>
       )}
 
-      <div className={`${queueOpen ? 'w-full' : 'max-w-7xl mx-auto'} px-6 py-6 flex gap-5 items-start`}>
-        {/* Queue pushes content right instead of overlaying it */}
+      <div className={`${queueOpen ? 'w-full' : 'max-w-7xl mx-auto'} px-4 sm:px-6 py-4 sm:py-6 flex flex-col md:flex-row gap-5 md:items-start`}>
+        {/* Queue pushes content right instead of overlaying it (stacks above on phones) */}
         {queueOpen && (
-          <div className="w-[300px] shrink-0 self-stretch sticky top-20 max-h-[calc(100vh-120px)]">
+          <div className="w-full md:w-[300px] shrink-0 md:self-stretch md:sticky md:top-20 max-h-[60vh] md:max-h-[calc(100vh-120px)]">
             <QueuePanel
               isOpen={queueOpen}
               onToggle={() => setQueueOpen(false)}
@@ -897,7 +897,7 @@ function SongsPanel({ onSongPingChange }: SongsPanelProps, ref: ForwardedRef<Son
           </div>
         )}
 
-        <div className="flex-1 min-w-0 space-y-5">
+        <div className="flex-1 min-w-0 w-full space-y-5">
         {songPing && (
           <div className="fade-swap flex items-center gap-3 bg-accent/10 border border-accent/40 rounded-lg px-4 py-2.5" role="status" aria-live="polite">
             <BellIcon className="w-4 h-4 text-accent-hover shrink-0" />
@@ -929,22 +929,22 @@ function SongsPanel({ onSongPingChange }: SongsPanelProps, ref: ForwardedRef<Son
             </button>
           </div>
         )}
-        <div className="flex items-start gap-3">
-          <div className="flex-1">
+        <div className="flex items-start gap-2 sm:gap-3">
+          <div className="flex-1 min-w-0">
             <SearchBar onSearch={handleSearch} />
           </div>
           <button
             onClick={() => setQueueOpen((v) => !v)}
             aria-pressed={queueOpen}
             title={queueOpen ? 'Hide queue' : 'Show song queue'}
-            className={`shrink-0 h-[46px] px-4 flex items-center gap-2 rounded-lg border cursor-pointer text-sm font-medium ${
+            className={`shrink-0 h-[46px] px-3 sm:px-4 flex items-center gap-2 rounded-lg border cursor-pointer text-sm font-medium ${
               queueOpen
                 ? 'bg-accent/15 border-accent/50 text-accent-hover'
                 : 'bg-surface-raised border-edge text-ink-dim hover:text-ink hover:border-accent'
             }`}
           >
             <MusicIcon className="w-4 h-4" />
-            Queue
+            <span className="hidden sm:inline">Queue</span>
             {queueCount > 0 && (
               <span className={`min-w-[20px] h-5 px-1 flex items-center justify-center rounded-full text-[11px] font-bold tabular-nums ${
                 queueOpen ? 'bg-accent/25 text-accent-hover' : 'bg-surface-sunken border border-edge text-ink-dim'
@@ -991,16 +991,14 @@ function SongsPanel({ onSongPingChange }: SongsPanelProps, ref: ForwardedRef<Son
           </div>
         )}
 
+        {/* Phones: one column (results, then live/preview). md+: resizable split. */}
         <div
           ref={splitContainerRef}
-          className="flex w-full gap-4"
-          style={{ minHeight: '60vh' }}
+          className="flex flex-col md:flex-row w-full gap-4 md:min-h-[60vh]"
+          style={{ '--split-left': `${leftWidth * 100}%`, '--split-right': `${(1 - leftWidth) * 100}%` } as React.CSSProperties}
         >
           {/* Left - Search results */}
-          <div
-            className="space-y-3"
-            style={{ flexBasis: `${leftWidth * 100}%`, minWidth: '35%' }}
-          >
+          <div className="space-y-3 min-w-0 md:basis-[var(--split-left)] md:min-w-[35%]">
             <SongList
               songs={displaySongs}
               onSelectSong={handleSelectSong}
@@ -1016,7 +1014,7 @@ function SongsPanel({ onSongPingChange }: SongsPanelProps, ref: ForwardedRef<Son
           <div
             role="separator"
             aria-orientation="vertical"
-            className="w-1.5 bg-edge hover:bg-accent/60 rounded-full cursor-col-resize select-none transition-colors duration-150"
+            className="hidden md:block w-1.5 bg-edge hover:bg-accent/60 rounded-full cursor-col-resize select-none transition-colors duration-150"
             style={{ minHeight: '100%', cursor: 'col-resize' }}
             onMouseDown={() => {
               setIsDragging(true);
@@ -1026,10 +1024,7 @@ function SongsPanel({ onSongPingChange }: SongsPanelProps, ref: ForwardedRef<Son
           ></div>
 
           {/* Right - Live, Queue & Preview */}
-          <div
-            className="space-y-4"
-            style={{ flexBasis: `${(1 - leftWidth) * 100}%`, minWidth: '25%' }}
-          >
+          <div className="space-y-4 min-w-0 md:basis-[var(--split-right)] md:min-w-[25%]">
             {/* ProPresenter Integration (not shown to worship) */}
             {role !== 'worship' && role !== 'guest' && (
             <div className="bg-surface-raised rounded-xl border border-edge p-4 space-y-3">
@@ -1410,7 +1405,7 @@ function SongReplica({ song, zoom, emptyText, badge, badgeClass, overlay, scroll
         {badge}
       </span>
       {song && (
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 bg-black/60 backdrop-blur-sm px-1.5 py-1 rounded-md border border-edge">
+        <div className="absolute bottom-2 md:bottom-auto md:top-2 right-2 z-10 flex items-center gap-1 bg-black/60 backdrop-blur-sm px-1.5 py-1 rounded-md border border-edge">
           {overlay}
         </div>
       )}

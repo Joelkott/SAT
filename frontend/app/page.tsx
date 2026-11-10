@@ -49,12 +49,12 @@ export default function Home() {
     <div className="min-h-screen bg-surface text-ink">
       {/* App bar */}
       <header className="sticky top-0 z-30 h-14 border-b border-edge bg-surface/85 backdrop-blur-md">
-        <div className="h-full px-4 sm:px-6 flex items-center gap-4">
+        <div className="h-full px-3 sm:px-6 flex items-center gap-2 sm:gap-4">
           {/* Brand: JGM logo, tinted via mask so it follows the theme gold */}
           <div
             role="img"
             aria-label="JGM"
-            className="h-8 w-[78px] shrink-0 bg-accent"
+            className="h-7 w-[60px] sm:h-8 sm:w-[78px] shrink-0 bg-accent"
             style={{
               WebkitMaskImage: 'url(/jgm-logo.png)',
               maskImage: 'url(/jgm-logo.png)',
@@ -71,7 +71,7 @@ export default function Home() {
           <div
             role="tablist"
             aria-label="Main sections"
-            className="flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5 ml-2"
+            className="flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5 sm:ml-2 shrink-0"
           >
             {TABS.map(({ id, label, Icon }) => {
               const active = activeTab === id;
@@ -81,7 +81,7 @@ export default function Home() {
                   role="tab"
                   aria-selected={active}
                   onClick={() => setActiveTab(id)}
-                  className={`flex items-center gap-2 px-4 h-8 rounded-[7px] text-sm font-medium cursor-pointer transition-all duration-150 ${
+                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 h-8 rounded-[7px] text-sm font-medium cursor-pointer transition-all duration-150 ${
                     active
                       ? 'bg-surface-hover text-ink shadow-sm border border-edge-strong'
                       : 'text-ink-mute hover:text-ink-dim border border-transparent'
@@ -101,8 +101,9 @@ export default function Home() {
 
           {/* Global actions */}
           {/* Outputs: role-gated (guest is view-only and projects nothing) */}
+          {/* Hidden on phones: these open separate desktop output windows. */}
           {role !== 'guest' && (
-            <div className="flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5">
+            <div className="hidden md:flex items-center gap-0.5 bg-surface-sunken border border-edge rounded-lg p-0.5">
               {(role === 'worship' || role === 'admin') && (
                 <button
                   onClick={() => window.open('/display', '_blank', 'noopener,noreferrer')}
@@ -131,14 +132,14 @@ export default function Home() {
             onClick={() => setShowHelp(true)}
             title="How to use SAT — shortcuts and tips"
             aria-label="Open help"
-            className="h-9 w-9 flex items-center justify-center rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer transition-colors duration-150"
+            className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg border border-edge text-ink-dim hover:text-ink hover:border-edge-strong cursor-pointer transition-colors duration-150"
           >
             <HelpCircleIcon className="w-4 h-4" />
           </button>
 
           {/* Settings: one menu for display settings, phone pairing, admin tools
               and the account (replaces the separate header buttons). */}
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               onClick={() => setMenuOpen((v) => !v)}
               aria-expanded={menuOpen}
@@ -149,7 +150,7 @@ export default function Home() {
               <SlidersIcon className="w-4 h-4" />
               <span className="hidden sm:inline">{role || 'Settings'}</span>
               {role === 'guest' && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-sunken border border-edge text-ink-mute normal-case">View only</span>
+                <span className="hidden sm:inline text-[10px] px-1.5 py-0.5 rounded-full bg-surface-sunken border border-edge text-ink-mute normal-case">View only</span>
               )}
               {remote.state.pairs.length > 0 && (
                 <span
