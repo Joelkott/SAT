@@ -44,13 +44,13 @@ export default function SongDetail({ song, onEdit, onDelete }: SongDetailProps) 
             <div>
               <dt className="text-gray-500 dark:text-gray-400">Created</dt>
               <dd className="text-gray-900 dark:text-white mt-1">
-                {new Date(song.created_at).toLocaleDateString()}
+                {new Date(song.created_at).toLocaleDateString('en-US')}
               </dd>
             </div>
             <div>
               <dt className="text-gray-500 dark:text-gray-400">Last Updated</dt>
               <dd className="text-gray-900 dark:text-white mt-1">
-                {new Date(song.updated_at).toLocaleDateString()}
+                {new Date(song.updated_at).toLocaleDateString('en-US')}
               </dd>
             </div>
           </dl>

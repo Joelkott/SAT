@@ -139,10 +139,10 @@ export default function SongFullScreen({ song, onClose, onEdit, onDelete }: Song
       <div className="p-4 border-t border-gray-700 bg-gray-900 bg-opacity-50">
         <div className="max-w-5xl mx-auto flex justify-between items-center text-sm text-gray-400">
           <div>
-            Created: {new Date(song.created_at).toLocaleDateString()}
+            Created: {new Date(song.created_at).toLocaleDateString('en-US')}
           </div>
           <div>
-            Last Updated: {new Date(song.updated_at).toLocaleDateString()}
+            Last Updated: {new Date(song.updated_at).toLocaleDateString('en-US')}
           </div>
         </div>
       </div>

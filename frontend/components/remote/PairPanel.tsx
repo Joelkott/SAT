@@ -168,7 +168,7 @@ export default function PairPanel({ remote, onClose }: PairPanelProps) {
                   <div className="min-w-0 flex-1">
                     <div className="text-sm text-ink truncate">{p.label || 'Phone'}</div>
                     <div className="text-[11px] text-ink-mute truncate">
-                      {p.username} · {p.created_at ? new Date(p.created_at).toLocaleString() : ''}
+                      {p.username} · {p.created_at ? new Date(p.created_at).toLocaleString('en-US') : ''}
                     </div>
                   </div>
                   <button
