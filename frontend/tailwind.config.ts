@@ -8,6 +8,11 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // font-sans = the app's UI stack (globals.css --font-ui), not Tailwind's
+      // default, so it can never fall through to a device font for Latin.
+      fontFamily: {
+        sans: ["var(--font-ui)"],
+      },
       colors: {
         // Semantic surface scale (darkest → most elevated)
         surface: {
